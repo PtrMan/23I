@@ -34,18 +34,46 @@ class TrainingDatSrcDb(object):
   def __init__(self):
     self.db=Db()
     self.db.open('./a.sqlite',False)
-
-  def getDat(self):
-    selIdx=1+random.randint(0,330-1)
+  
+  def getDatAt(self, selIdx):
     dbRes=self.db.queryById(selIdx)
     #print(dbRes) #dbg
     return (torch.tensor([dbRes[0]]).to(device), torch.tensor([dbRes[1]]).to(device))
+
+  def getDat(self):
+    selIdx=1+random.randint(0,self.retCnt()-1)
+    return self.getDatAt(selfIdx)
   
   def retCnt(self):
     return 330
 
+class CachedTrainingDatSrcDb(object):
+  def __init__(self, src):
+    self.src = src
+    self.dat = None
 
-datSrc = TrainingDatSrcDb()
+  def updateCache(self):
+    self.dat = []
+    for iidx in range(self.src.retCnt()):
+      self.dat.append(self.src.getDatAt(1+iidx))
+  
+  def getDatAt(self, selIdx):
+    return self.dat[selIdx]
+
+  def getDat(self):
+    selIdx=random.randint(0,self.retCnt()-1)
+    return self.getDatAt(selIdx)
+  
+  def retCnt(self):
+    return self.src.retCnt()
+
+
+datSrc0 = TrainingDatSrcDb()
+datSrc = CachedTrainingDatSrcDb(datSrc0)
+
+print(f"update cache...")
+datSrc.updateCache()
+print(f"...done")
 #datSrc.dat.append((torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0,  0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),torch.tensor([[0.9, 0.1]])))
 #datSrc.dat.append((torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0,  1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),torch.tensor([[0.1, 0.9]])))
 #datSrc.dat.append((torch.tensor([[0.0, 0.0, 0.0, 0.0, 1.0,  0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]]),torch.tensor([[0.1, 0.9]])))
