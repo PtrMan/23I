@@ -44,11 +44,20 @@ var c: string = ""
 
 
 
-for ia in -5..5:
-  for ib in -5..5:
+for ia in -12..12:
+  for ib in -12..12:
     let temp: string = &"{ia}+{ib}=Q#Q\nres={ia}+{ib}\nQ#Qres={ia+ib}\n{ia+ib}"
     c=c&temp&"\n"
 
+for ia in -8..8:
+  for ib in -8..8:
+    let temp: string = &"{ia}-{ib}=Q#Q\nres={ia}-{ib}\nQ#Qres={ia-ib}\n{ia-ib}"
+    c=c&temp&"\n"
+
+for ia in -12..12:
+  for ib in -12..12:
+    let temp: string = &"{ia}*{ib}=Q#Q\nres={ia}*{ib}\nQ#Qres={ia*ib}\n{ia*ib}"
+    c=c&temp&"\n"
 
 
 var a: seq[int] = @[]
@@ -239,18 +248,23 @@ when isMainModule:
       gen.dat.add((@[stimulus], target, 1.0))
   
 
-  for iDat in gen.dat:
+  var textOut: string = ""
+
+  textOut=textOut&("CREATE TABLE IF NOT EXISTS a (\nid INTEGER PRIMARY KEY     AUTOINCREMENT,\na           TEXT    NOT NULL,\nb           TEXT    NOT NULL\n);")
+
+  textOut=textOut&("INSERT INTO a (a,b) VALUES ")
+
+  for iDat in gen.dat[0..gen.dat.len-1-1]:
     var stimulusStr: string = iDat.inArrays[0].map(proc(iv: float64): string = $iv).join(';')
     var targetStr: string = iDat.target.map(proc(iv: float64): string = $iv).join(';')
+    textOut=textOut&(&"('{stimulusStr}','{targetStr}'),")
+  
+  block:
+    let iDat = gen.dat[gen.dat.len-1]
+    var stimulusStr: string = iDat.inArrays[0].map(proc(iv: float64): string = $iv).join(';')
+    var targetStr: string = iDat.target.map(proc(iv: float64): string = $iv).join(';')
+    textOut=textOut&(&"('{stimulusStr}','{targetStr}');")
+  
+  writeFile("a.sql", textOut)
 
-    #var stimulusStr: string = &"{iDat.inArrays[0]}"
-    #var targetStr: string = &"{iDat.target}"
-    echo(&"INSERT INTO a (a,b) VALUES ('{stimulusStr}','{targetStr}');")
-
-
-
-
-
-
-
-
+  echo(&"...wrote {gen.dat.len} tuples to sql")
