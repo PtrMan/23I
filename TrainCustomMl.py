@@ -38,14 +38,14 @@ class TrainingDatSrcDb(object):
   def getDatAt(self, selIdx):
     dbRes=self.db.queryById(selIdx)
     #print(dbRes) #dbg
-    return (torch.tensor([dbRes[0]]).to(device), torch.tensor([dbRes[1]]).to(device))
+    return (torch.tensor([dbRes[0]]).to(device), torch.tensor([dbRes[1]]).to(device), dbRes[2])
 
   def getDat(self):
     selIdx=1+random.randint(0,self.retCnt()-1)
     return self.getDatAt(selfIdx)
   
   def retCnt(self):
-    return 330
+    return 6880-1
 
 class CachedTrainingDatSrcDb(object):
   def __init__(self, src):
@@ -113,6 +113,9 @@ model = torch.nn.Sequential(
     
     torch.nn.Flatten(0, 1)
 )
+
+#model.load_state_dict( torch.load("snapshot.pytorch.model", map_location=torch.device('cpu')) )
+
 model = model.to(device)
 
 # The nn package also contains definitions of popular loss functions; in this
@@ -123,14 +126,15 @@ learning_rate = 0.000001*6.0*2.0
 
 avgLoss = None
 
+
 for t in range(1000000000):
-    xxx, y = datSrc.getDat()
+    x, y, gradientStrength = datSrc.getDat()
 
     # Forward pass: compute predicted y by passing x to the model. Module objects
     # override the __call__ operator so you can call them like functions. When
     # doing so you pass a Tensor of input data to the Module and it produces
     # a Tensor of output data.
-    y_pred = model(xxx)
+    y_pred = model(x)
 
     # Compute and print loss. We pass Tensors containing the predicted and true
     # values of y, and the loss function returns a Tensor containing the
@@ -142,7 +146,7 @@ for t in range(1000000000):
     
     avgLoss = loss*0.0001 + (avgLoss*(1.0-0.0001))
     
-    debug_everyT = 200
+    debug_everyT = 900
     
     if t % debug_everyT == debug_everyT-1:
         print(f'epoch={t/datSrc.retCnt()} avgLoss={avgLoss} sample_loss={loss.item()}')
@@ -162,11 +166,24 @@ for t in range(1000000000):
     # we can access its gradients like we did before.
     with torch.no_grad():
         for param in model.parameters():
-            param -= learning_rate * param.grad
+            param -= learning_rate * param.grad * gradientStrength
     
 
     if t % (datSrc.retCnt()*330) == 0:
-      print(f'store snapshot')
-      epoch = int(t/datSrc.retCnt())
-      filepath = f'./epoch{epoch}.ptorch.model'
-      torch.save(model.state_dict(), filepath)
+        print(f'store snapshot')
+        epoch = int(t/datSrc.retCnt())
+        filepath = f'./epoch{epoch}.pytorch.model'
+        torch.save(model.state_dict(), filepath)
+    
+    # stopping criteria
+    if avgLoss < 0.0001:
+        break
+    
+    del x
+    del y
+    del y_pred
+    
+
+print(f'store final model')
+filepath = f'./final.pytorch.model'
+torch.save(model.state_dict(), filepath)
