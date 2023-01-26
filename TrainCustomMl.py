@@ -114,7 +114,7 @@ model = torch.nn.Sequential(
     torch.nn.Flatten(0, 1)
 )
 
-#model.load_state_dict( torch.load("snapshot.pytorch.model", map_location=torch.device('cpu')) )
+model.load_state_dict( torch.load("snapshot.pytorch.model", map_location=torch.device('cpu')) )
 
 model = model.to(device)
 
@@ -126,6 +126,7 @@ learning_rate = 0.000001*6.0*2.0
 
 avgLoss = None
 
+nSnapshots = 0 # counter for stored snapshots
 
 for t in range(1000000000):
     x, y, gradientStrength = datSrc.getDat()
@@ -169,11 +170,18 @@ for t in range(1000000000):
             param -= learning_rate * param.grad * gradientStrength
     
 
-    if t % (datSrc.retCnt()*330) == 0:
+    if t % (datSrc.retCnt()*30) == 0:
         print(f'store snapshot')
         epoch = int(t/datSrc.retCnt())
         filepath = f'./epoch{epoch}.pytorch.model'
         torch.save(model.state_dict(), filepath)
+        
+        filepath = f'./snapshot.pytorch.model'
+        torch.save(model.state_dict(), filepath)
+        
+        nSnapshots+=1
+        if nSnapshots >= 5:
+            exit(1) # HACK<we terminate script to prevent memory overflow because of a memory leak because of improper usage of pytorch>
     
     # stopping criteria
     if avgLoss < 0.0001:
