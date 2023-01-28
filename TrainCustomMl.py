@@ -45,7 +45,7 @@ class TrainingDatSrcDb(object):
     return self.getDatAt(selfIdx)
   
   def retCnt(self):
-    return 6880-1
+    return 6945-1
 
 class CachedTrainingDatSrcDb(object):
   def __init__(self, src):
@@ -103,13 +103,13 @@ class gcu(torch.nn.Module):
 # The Flatten layer flatens the output of the linear layer to a 1D tensor,
 # to match the shape of `y`.
 model = torch.nn.Sequential(
-    torch.nn.Linear(5*29, 60),
+    torch.nn.Linear(5*29, 80),
     torch.nn.ReLU(),
     #gcu(),
-    torch.nn.Linear(60, 50),
+    torch.nn.Linear(80, 70),
     
     gcu(), #torch.nn.ReLU(),
-    torch.nn.Linear(50, 5),
+    torch.nn.Linear(70, 5),
     
     torch.nn.Flatten(0, 1)
 )
