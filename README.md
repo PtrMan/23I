@@ -1,5 +1,5 @@
 # what is this?
-Another try on a generalish AI
+Another try on a generic AI
 
 # components
 * NN training scripts
