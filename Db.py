@@ -24,7 +24,7 @@ class Db(object):
 
 
 
-
+    # returns array of [stimulus, output, gradientStrength]
     def queryById(self, id):
         cursor = self.conn.execute("SELECT id, a, b from a where id="+str(id))
         
@@ -39,7 +39,7 @@ class Db(object):
         aArr=[float(iv) for iv in aStr.split(';')]
         bArr=[float(iv) for iv in bStr.split(';')]
         
-        return [aArr,bArr]
+        return [aArr,bArr, 1.0]
     
     def close(self):
         self.conn.close()
