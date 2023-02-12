@@ -7,40 +7,6 @@
 class Model0(torch.nn.Module):
     @staticmethod
     def _hopfieldCalc(phi, xMat):
-        """
-        verbosity = 0
-        
-        #print(str(x))
-        #print(str(x[0]))
-        
-        
-        r = []
-        for iIdx in range(len(w)): # iterate over indices of vectors in w
-            
-            r0 = torch.dot(x[0], w[iIdx])
-            r.append(r0)
-        
-        if verbosity >= 1:
-            print(str(r0))
-            print(str(r1))
-        
-        # compute softmax of hopfield NN
-        t0 = torch.tensor(r)
-        t1 = torch.softmax(t0, 0)
-        t2 = t1.unsqueeze(0) # convert to matrix
-
-        if verbosity >= 1:
-            print(str(t2))
-            print(str(transpose2(w)))
-
-        # compute scaled result of hopfield NN
-        t4 = t2*transpose2(w)
-        
-        return transpose2(t4)
-        """
-    
-    
-    
         
         phi2 = transpose2(phi)
         
@@ -61,8 +27,10 @@ class Model0(torch.nn.Module):
         
         torch.manual_seed(443)
         
+        xSize = 5*4 # size of stimulus X of the NN
+        
         # weights to convert stimuli to  stimuli fed into hopfield NN
-        self.w1 = torch.nn.Parameter( ((0.01--0.01)*torch.rand(5, 8)+(-0.01)).requires_grad_() )
+        self.w1 = torch.nn.Parameter( ((0.01--0.01)*torch.rand(xSize, 8)+(-0.01)).requires_grad_() )
         
         
         
@@ -73,7 +41,7 @@ class Model0(torch.nn.Module):
             [0.00000986, 1.000123, 0.0000113, 0.00007213,   0.00003434, 0.0004534, 0.000044544, 0.000006774],        
         ], requires_grad = True)
         """
-        nHopfieldVecs = 9 # how many different vectors does the hopfied NN have? - is independent on everything else
+        nHopfieldVecs = 9 # how many different vectors does the hopfied NN have? - determines memory capacity of hopfield NN. - is independent on everything else
         w0 = ((0.1--0.1)*torch.rand(8, nHopfieldVecs)+(-0.1)).requires_grad_()
         
         self.w0 = torch.nn.Parameter(w0)
@@ -132,11 +100,19 @@ class Model0(torch.nn.Module):
 
 import random
 
+tokenEmbeddings = []
+tokenEmbeddings.append(torch.rand(1, 5).tolist())
+tokenEmbeddings.append(torch.rand(1, 5).tolist())
+tokenEmbeddings.append(torch.rand(1, 5).tolist())
+tokenEmbeddings.append(torch.rand(1, 5).tolist())
+tokenEmbeddings.append(torch.rand(1, 5).tolist())
+
 # Create Tensors to hold input and outputs.
 trainingTuples = []
-trainingTuples.append(([0.1, 0.21, 1.0, 0.32, 0.777], [0.9, 0.001, 0.001, 0.001,    0.001, 0.001]))
-trainingTuples.append(([0.1, 1.0, 0.01, 0.12, -0.147], [0.0333, 0.9, 0.001, 0.001,    0.001, 0.001]))
-trainingTuples.append(([0.1, 0.7, 0.81, 0.72, -0.847], [0.001, 0.9, 0.001, 0.001,    0.001, 0.001]))
+trainingTuples.append(([0, 0, 1, 2], [0.9, 0.001, 0.001, 0.001,    0.001, 0.001]))
+trainingTuples.append(([0, 1, 2, 3], [0.9, 0.001, 0.001, 0.001,    0.001, 0.001]))
+trainingTuples.append(([1, 2, 3, 1], [0.0333, 0.9, 0.001, 0.001,    0.001, 0.001]))
+trainingTuples.append(([2, 3, 0, 3], [0.001, 0.001, 0.9, 0.001,    0.001, 0.001]))
 
 
 # Construct our model by instantiating the class defined above
@@ -149,21 +125,30 @@ modelA = Model0()
 criterion = torch.nn.MSELoss(reduction='sum')
 #optimizer = torch.optim.SGD(modelA.parameters(), lr=1e-3)
 optimizer = torch.optim.Adam(modelA.parameters(), lr=0.001)
-for it in range(2800):
+for it in range(9080):
     selIdx = random.randint(0, len(trainingTuples)-1)
+
     x = torch.tensor(trainingTuples[selIdx][0])
     y = torch.tensor(trainingTuples[selIdx][1])
-
+    
+    x2 = map(lambda v : tokenEmbeddings[v], x) # map index of embedding to actual embedding
+    
+    x3 = []
+    for iv in x2:
+        for iv2 in iv:
+            x3.extend(iv2)
+    
+    x4 = torch.tensor(x3)
     
     # Forward pass: Compute predicted y by passing x to the model
-    y_pred = modelA(x)
+    y_pred = modelA(x4)
     #y_pred = modelB(y_pred)
     
     #print('y pred='+str(y_pred))
     
 
     # Compute and print loss
-    printLossEvernN = 250
+    printLossEvernN = 100
     
     loss = criterion(y_pred, y)
     if (it % printLossEvernN) == (printLossEvernN-1):
