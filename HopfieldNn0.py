@@ -27,7 +27,7 @@ class Model0(torch.nn.Module):
         
         torch.manual_seed(443)
         
-        xSize = 5*4 # size of stimulus X of the NN
+        xSize = (8)*5 # size of stimulus X of the NN
         
         # weights to convert stimuli to  stimuli fed into hopfield NN
         self.w1 = torch.nn.Parameter( ((0.01--0.01)*torch.rand(xSize, 8)+(-0.01)).requires_grad_() )
@@ -41,13 +41,13 @@ class Model0(torch.nn.Module):
             [0.00000986, 1.000123, 0.0000113, 0.00007213,   0.00003434, 0.0004534, 0.000044544, 0.000006774],        
         ], requires_grad = True)
         """
-        nHopfieldVecs = 9 # how many different vectors does the hopfied NN have? - determines memory capacity of hopfield NN. - is independent on everything else
+        nHopfieldVecs = 40 # how many different vectors does the hopfied NN have? - determines memory capacity of hopfield NN. - is independent on everything else
         w0 = ((0.1--0.1)*torch.rand(8, nHopfieldVecs)+(-0.1)).requires_grad_()
         
         self.w0 = torch.nn.Parameter(w0)
         
         
-        nUnitsOutput = 10 # how many output units does the bottom layer have?
+        nUnitsOutput = 3300 # how many output units does the bottom layer have?
         
         self.w2 = torch.nn.Parameter( ((1.0-(-1.0))*torch.rand(8, nUnitsOutput)+(-1.0)).requires_grad_() )
         self.w3 = torch.nn.Parameter( torch.rand(1, nUnitsOutput).requires_grad_() ) # bias
@@ -102,7 +102,7 @@ class Model0(torch.nn.Module):
 import random
 
 tokenEmbeddings = []
-for i in range(10):
+for i in range(3300):
     tokenEmbeddings.append(torch.rand(1, 5).tolist())
 
 
@@ -119,7 +119,7 @@ class DatGen0(object):
         selSeqIdx = random.randint(0, len(self.seqs)-1)
         selSeq = self.seqs[selSeqIdx]
                 
-        sliceLen = 4+1
+        sliceLen = 8+1
         
         selStartIdxRangeMin = 0
         selStartIdxRangeMax = len(selSeq)-sliceLen
@@ -134,7 +134,7 @@ class DatGen0(object):
         return (None, slice_[:-1], slice_[-1])
         
 datGen = DatGen0()
-datGen.seqs.append([0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 1, 3, 3, 7, 0, 2, 3, 5, 7])
+datGen.seqs.append([1777, 46, 10, 81, 58, 2412, 63, 10, 65, 58, 10, 1777, 46, 10, 10, 2979, 46, 10, 10, 81, 58, 1288, 1308, 63, 10, 65, 58, 10, 2979, 46, 10, 10, 81, 58, 2788, 63, 10, 65, 58, 10, 2239, 392, 2595, 437, 46, 917, 691, 264, 913, 920, 2032, 46, 10, 10, 10, 981, 474, 2230, 46, 10, 68, 111, 308, 2955, 594, 2230, 46, 10, 2178, 1036, 594, 701, 1432, 46, 10, 2097, 1228, 737, 103, 295, 437, 46, 10, 417, 814, 416, 303, 110, 39, 265, 1455, 46, 10, 2371, 46, 10, 81, 58, 1288, 1590, 804, 63, 10, 65, 58, 10, 2371, 46, 10, 81, 58, 2194, 44, 1409, 1324, 46, 10, 65, 58, 10, 2709, 10, 81, 58, 2194, 44])
 
 
 # Create Tensors to hold input and outputs.
@@ -165,7 +165,7 @@ for it in range(3000000):
 
     #x = torch.tensor(trainingTuples[selIdx][0])
     
-    y = [0.01]*10
+    y = [0.01]*len(tokenEmbeddings)
     y[tuplePredToken] = 0.9
     yTorch = torch.tensor(y)
     
@@ -187,7 +187,7 @@ for it in range(3000000):
     
 
     # Compute and print loss
-    printLossEvernN = 100
+    printLossEvernN = 200
     
     loss = criterion(yPred, yTorch)
     if (it % printLossEvernN) == (printLossEvernN-1):
