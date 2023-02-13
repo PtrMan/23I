@@ -151,6 +151,9 @@ trainingTuples.append(([2, 3, 4, 3], [0.9, 0.001, 0.001, 0.001,    0.001, 0.001]
 # Construct our model by instantiating the class defined above
 modelA = Model0()
 
+# see https://stackoverflow.com/a/49201237/388614
+pytorchTotalParams = sum(p.numel() for p in modelA.parameters() if p.requires_grad)
+print(f'#params={pytorchTotalParams}')
 
 # Construct our loss function and an Optimizer. The call to model.parameters()
 # in the SGD constructor will contain the learnable parameters (defined
