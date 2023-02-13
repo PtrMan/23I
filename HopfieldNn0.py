@@ -47,9 +47,10 @@ class Model0(torch.nn.Module):
         self.w0 = torch.nn.Parameter(w0)
         
         
+        nUnitsOutput = 10 # how many output units does the bottom layer have?
         
-        self.w2 = torch.nn.Parameter( ((1.0-(-1.0))*torch.rand(8, 6)+(-1.0)).requires_grad_() )
-        self.w3 = torch.nn.Parameter( torch.rand(1, 6).requires_grad_() ) # bias
+        self.w2 = torch.nn.Parameter( ((1.0-(-1.0))*torch.rand(8, nUnitsOutput)+(-1.0)).requires_grad_() )
+        self.w3 = torch.nn.Parameter( torch.rand(1, nUnitsOutput).requires_grad_() ) # bias
 
         
     def forward(self, x):
@@ -101,13 +102,43 @@ class Model0(torch.nn.Module):
 import random
 
 tokenEmbeddings = []
-tokenEmbeddings.append(torch.rand(1, 5).tolist())
-tokenEmbeddings.append(torch.rand(1, 5).tolist())
-tokenEmbeddings.append(torch.rand(1, 5).tolist())
-tokenEmbeddings.append(torch.rand(1, 5).tolist())
-tokenEmbeddings.append(torch.rand(1, 5).tolist())
+for i in range(10):
+    tokenEmbeddings.append(torch.rand(1, 5).tolist())
+
+
+# data generator (used for training)
+class DatGen0(object):
+    def __init__(self):
+        self.seqs = [] # list with all sequences
+        
+        pass
+    
+    # returns tuple of (None, list of stimuli tokens, predictedToken)
+    # first result is reserved for RNN context vector
+    def sample(self):
+        selSeqIdx = random.randint(0, len(self.seqs)-1)
+        selSeq = self.seqs[selSeqIdx]
+                
+        sliceLen = 4+1
+        
+        selStartIdxRangeMin = 0
+        selStartIdxRangeMax = len(selSeq)-sliceLen
+        #print('len='+str(len(selSeq)))
+        #print('endIdx='+str(selStartIdxRangeMax))
+        
+        selStartIdx = random.randint(selStartIdxRangeMin, selStartIdxRangeMax)
+        
+        slice_ = selSeq[selStartIdx:selStartIdx+sliceLen]
+        #print(slice_)
+        
+        return (None, slice_[:-1], slice_[-1])
+        
+datGen = DatGen0()
+datGen.seqs.append([0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 1, 3, 3, 7, 0, 2, 3, 5, 7])
+
 
 # Create Tensors to hold input and outputs.
+"""
 trainingTuples = []
 trainingTuples.append(([0, 0, 1, 2], [0.9, 0.001, 0.001, 0.001,    0.001, 0.001]))
 trainingTuples.append(([0, 1, 2, 3], [0.9, 0.001, 0.001, 0.001,    0.001, 0.001]))
@@ -115,7 +146,7 @@ trainingTuples.append(([1, 2, 3, 1], [0.001, 0.9, 0.001, 0.001,    0.001, 0.001]
 trainingTuples.append(([2, 3, 0, 3], [0.001, 0.001, 0.9, 0.001,    0.001, 0.001]))
 trainingTuples.append(([1, 2, 3, 1], [0.001, 0.9, 0.001, 0.001,    0.001, 0.001]))
 trainingTuples.append(([2, 3, 4, 3], [0.9, 0.001, 0.001, 0.001,    0.001, 0.001]))
-
+"""
 
 # Construct our model by instantiating the class defined above
 modelA = Model0()
@@ -127,32 +158,38 @@ modelA = Model0()
 criterion = torch.nn.MSELoss(reduction='sum')
 #optimizer = torch.optim.SGD(modelA.parameters(), lr=1e-3)
 optimizer = torch.optim.Adam(modelA.parameters(), lr=0.001)
-for it in range(30080):
-    selIdx = random.randint(0, len(trainingTuples)-1)
-
-    x = torch.tensor(trainingTuples[selIdx][0])
-    y = torch.tensor(trainingTuples[selIdx][1])
+for it in range(3000000):
+    #selIdx = random.randint(0, len(trainingTuples)-1)
     
-    x2 = map(lambda v : tokenEmbeddings[v], x) # map index of embedding to actual embedding
+    tupleRnnCtxVec, tupleStimuliTokens, tuplePredToken = datGen.sample()
+
+    #x = torch.tensor(trainingTuples[selIdx][0])
+    
+    y = [0.01]*10
+    y[tuplePredToken] = 0.9
+    yTorch = torch.tensor(y)
+    
+    x2 = map(lambda v : tokenEmbeddings[v], tupleStimuliTokens) # map index of embedding to actual embedding
     
     x3 = []
     for iv in x2:
         for iv2 in iv:
             x3.extend(iv2)
     
-    x4 = torch.tensor(x3)
+    xTorch = torch.tensor(x3)
     
     # Forward pass: Compute predicted y by passing x to the model
-    y_pred = modelA(x4)
-    #y_pred = modelB(y_pred)
+    yPred = modelA(xTorch)
     
-    #print('y pred='+str(y_pred))
+    if (it % 800) == 0:
+        pass
+        #print('yPred='+str(yPred))
     
 
     # Compute and print loss
-    printLossEvernN = 50
+    printLossEvernN = 100
     
-    loss = criterion(y_pred, y)
+    loss = criterion(yPred, yTorch)
     if (it % printLossEvernN) == (printLossEvernN-1):
         print('it=', it, loss.item())
 
