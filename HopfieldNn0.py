@@ -111,8 +111,10 @@ tokenEmbeddings.append(torch.rand(1, 5).tolist())
 trainingTuples = []
 trainingTuples.append(([0, 0, 1, 2], [0.9, 0.001, 0.001, 0.001,    0.001, 0.001]))
 trainingTuples.append(([0, 1, 2, 3], [0.9, 0.001, 0.001, 0.001,    0.001, 0.001]))
-trainingTuples.append(([1, 2, 3, 1], [0.0333, 0.9, 0.001, 0.001,    0.001, 0.001]))
+trainingTuples.append(([1, 2, 3, 1], [0.001, 0.9, 0.001, 0.001,    0.001, 0.001]))
 trainingTuples.append(([2, 3, 0, 3], [0.001, 0.001, 0.9, 0.001,    0.001, 0.001]))
+trainingTuples.append(([1, 2, 3, 1], [0.001, 0.9, 0.001, 0.001,    0.001, 0.001]))
+trainingTuples.append(([2, 3, 4, 3], [0.9, 0.001, 0.001, 0.001,    0.001, 0.001]))
 
 
 # Construct our model by instantiating the class defined above
@@ -125,7 +127,7 @@ modelA = Model0()
 criterion = torch.nn.MSELoss(reduction='sum')
 #optimizer = torch.optim.SGD(modelA.parameters(), lr=1e-3)
 optimizer = torch.optim.Adam(modelA.parameters(), lr=0.001)
-for it in range(9080):
+for it in range(30080):
     selIdx = random.randint(0, len(trainingTuples)-1)
 
     x = torch.tensor(trainingTuples[selIdx][0])
@@ -148,7 +150,7 @@ for it in range(9080):
     
 
     # Compute and print loss
-    printLossEvernN = 100
+    printLossEvernN = 50
     
     loss = criterion(y_pred, y)
     if (it % printLossEvernN) == (printLossEvernN-1):
