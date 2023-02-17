@@ -3,6 +3,7 @@
 #   t001 = hopfield(mask(t000), w0) # apply hopfied to it
 #   
 #   y = sigmoid(t001, w2, w3)
+#   y = sigmoid(t001+x, w2, w3)
 
 class Model0(torch.nn.Module):
     @staticmethod
@@ -49,7 +50,7 @@ class Model0(torch.nn.Module):
         
         nUnitsOutput = 3300 # how many output units does the bottom layer have?
         
-        self.w2 = torch.nn.Parameter( ((1.0-(-1.0))*torch.rand(9*2, nUnitsOutput)+(-1.0)).requires_grad_() )
+        self.w2 = torch.nn.Parameter( ((1.0-(-1.0))*torch.rand(9*2 + xSize, nUnitsOutput)+(-1.0)).requires_grad_() )
         self.w3 = torch.nn.Parameter( torch.rand(1, nUnitsOutput).requires_grad_() ) # bias
 
         
@@ -85,7 +86,15 @@ class Model0(torch.nn.Module):
         
         #print(t0)
         
-        t3 = torch.matmul(t0, self.w2)
+        
+        #t5 = t0
+        #print(t0)
+        #print(t2)
+        t5 = torch.cat((t0, t2), 1)
+        #print(t5)
+        
+        
+        t3 = torch.matmul(t5, self.w2)
         t4 = t3
         t4 = torch.sigmoid(t3+self.w3)
         
@@ -151,6 +160,11 @@ trainingTuples.append(([2, 3, 4, 3], [0.9, 0.001, 0.001, 0.001,    0.001, 0.001]
 # Construct our model by instantiating the class defined above
 modelA = Model0()
 
+
+print('load model...')
+modelA.load_state_dict(torch.load('./lmB-checkpoint.pytorchModel'))
+print('...done')
+
 # see https://stackoverflow.com/a/49201237/388614
 pytorchTotalParams = sum(p.numel() for p in modelA.parameters() if p.requires_grad)
 print(f'#params={pytorchTotalParams}')
@@ -164,7 +178,11 @@ optimizer = torch.optim.Adam(modelA.parameters(), lr=0.001)
 
 lossAvg = None
 
-for it in range(3000000):
+for it in range(30000000):
+    if (it % 13000) == 0:
+        print(f'store model')
+        torch.save(modelA.state_dict(), './lmB-checkpoint.pytorchModel')
+    
     #selIdx = random.randint(0, len(trainingTuples)-1)
     
     tupleRnnCtxVec, tupleStimuliTokens, tuplePredToken = datGen.sample()
