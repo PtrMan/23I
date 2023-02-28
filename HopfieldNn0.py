@@ -1,3 +1,10 @@
+import torch
+
+# transpose helper
+def transpose2(m):
+    return torch.transpose(m, 0, 1)
+
+
 #   t000 = x * w1 # map actual input to vector which encodes the combination of attended features
 #   
 #   t001 = hopfield(mask(t000), w0) # apply hopfied to it
@@ -33,12 +40,14 @@ class Model0(torch.nn.Module):
         
         self.verbosity = 0
         
+        self.widthLatent = 20 # how big is the latent space vector?
+        
         torch.manual_seed(443)
         
         xSize = (15)*5 # size of stimulus X of the NN
         
         # weights to convert stimuli to  stimuli fed into hopfield NN
-        self.w1 = torch.nn.Parameter( ((0.01--0.01)*torch.rand(xSize, 9*2)+(-0.01)).requires_grad_().to(device) )
+        self.w1 = torch.nn.Parameter( ((0.01--0.01)*torch.rand(xSize, self.widthLatent*2)+(-0.01)).requires_grad_().to(device) )
         
         
         
@@ -49,16 +58,25 @@ class Model0(torch.nn.Module):
             [0.00000986, 1.000123, 0.0000113, 0.00007213,   0.00003434, 0.0004534, 0.000044544, 0.000006774],        
         ], requires_grad = True)
         """
-        nHopfieldVecs = 40 # how many different vectors does the hopfied NN have? - determines memory capacity of hopfield NN. - is independent on everything else
-        w0 = ((0.1--0.1)*torch.rand(9*2, nHopfieldVecs)+(-0.1)).to(device).requires_grad_()
+        nHopfieldVecs = 60 # how many different vectors does the hopfied NN have? - determines memory capacity of hopfield NN. - is independent on everything else
+        w0 = ((0.1--0.1)*torch.rand(self.widthLatent*2, nHopfieldVecs)+(-0.1)).to(device).requires_grad_()
         
         self.w0 = torch.nn.Parameter(w0)
         
         
         nUnitsOutput = 3300 # how many output units does the bottom layer have?
         
-        self.w2 = torch.nn.Parameter( ((1.0-(-1.0))*torch.rand(9*2 + xSize, nUnitsOutput)+(-1.0)).to(device).requires_grad_() )
+        n2 = 120
+        
+        self.w2 = torch.nn.Parameter( ((1.0-(-1.0))*torch.rand(self.widthLatent*2 + xSize, n2)+(-1.0)).to(device).requires_grad_() )
+        #######self.w2 = torch.nn.Parameter( ((1.0-(-1.0))*torch.rand(nUnitsOutput, nUnitsOutput)+(-1.0)).to(device).requires_grad_() )
         self.w3 = torch.nn.Parameter( torch.rand(1, nUnitsOutput).requires_grad_().to(device) ) # bias
+
+        
+        self.w4 = torch.nn.Parameter( ((1.0-(-1.0))*torch.rand(n2, nUnitsOutput)+(-1.0)).to(device).requires_grad_() )
+
+        
+        #self.p5 = torch.nn.Parameter( ((1.0-(-1.0))*torch.rand(n2, nUnitsOutput)+(-1.0)).to(device).requires_grad_() )
 
         
     def forward(self, x):
@@ -76,7 +94,7 @@ class Model0(torch.nn.Module):
         #print('>')
         
         # mask to mask out value from hopfield attention
-        mask0 = [1.0]*9 + [0.0]*9
+        mask0 = [1.0]*self.widthLatent + [0.0]*self.widthLatent
         mask0AsTensor = torch.tensor(mask0).to(device)
         
         #print(t1)
@@ -102,8 +120,20 @@ class Model0(torch.nn.Module):
         
         
         t3 = torch.matmul(t5, self.w2)
-        t4 = t3
-        t4 = torch.sigmoid(t3+self.w3)
+        
+        
+        t6 = torch.special.sinc(t3)
+        #print("t6.size="+str(t6.size()))
+        
+        
+        t7 = torch.matmul(t6, self.w4)
+        #print("t7.size="+str(t7.size()))
+        
+        
+        
+        #t4 = t3 # commented on 28.02.2023
+        #t4 = t7
+        t4 = torch.sigmoid(t7+self.w3)
         
         #print(str(t4))
         
