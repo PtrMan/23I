@@ -148,7 +148,7 @@ proc buildNn*(params: seq[float64]): Network1 =
 
 
 
-block:
+when isMainModule:
 
   
   proc evalCandidates(candidates: seq[EsCandidate0Ref]) =
