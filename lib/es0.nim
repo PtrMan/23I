@@ -96,17 +96,19 @@ proc calcLayer*(self: Layer1, x: seq[float64]): seq[float64] =
 type
   EsCandidate0Ref* = ref EsCandidate0
   EsCandidate0* = object
-    params*: seq[float64]
+    paramsDelta*: seq[float64]
     score*: float64
     
 
 type
   EsCtx1* = object
-    params*: seq[float64]
+    paramsCenter*: seq[float64]
     #candidates*: seq[EsCandidate0]
 
     nCandidates*: int # PARAM
     sigma*: float64 # PARAM
+
+    learningRate: float64 # PARAM
 
 
 
@@ -151,7 +153,7 @@ proc buildNn*(params: seq[float64]): Network1 =
 when isMainModule:
 
   
-  proc evalCandidates(candidates: seq[EsCandidate0Ref]) =
+  proc evalCandidates(centerParams: seq[float64], candidates: seq[EsCandidate0Ref]) =
     var verbosity: int = 0 # verbosity for debugging/tracing
     
     var bestMse: float64 = 10.0e10
@@ -159,7 +161,7 @@ when isMainModule:
     for candidateIdx in 0..<candidates.len:
       var selCandidate = candidates[candidateIdx]
       
-      var params: seq[float64] = selCandidate.params
+      var params: seq[float64] = vecAdd(centerParams, selCandidate.paramsDelta)
       #echo(&"params={params}") # DBG
 
       # * build
@@ -193,8 +195,8 @@ when isMainModule:
         let dist = abs(diff)
         mse+=(dist*dist)
       
-      selCandidate.score = 60.0-pow(2.0+mse, 3.5) # might be buggy
-      selCandidate.score = max(6.0-mse, 0.0)
+      selCandidate.score = 260.0-pow(2.0+mse, 6.5) # might be buggy
+      selCandidate.score = pow(max(6.0-mse, 0.0), 1.0)
 
       bestMse = min(bestMse, mse) # update statistics for this iteration of optimization
 
@@ -215,8 +217,8 @@ when isMainModule:
 
   var vecLen: int = (9+1)*12*5
 
-  var ctx: EsCtx1 = EsCtx1(params: @[], nCandidates: 50, sigma: 1.5)
-  ctx.params = vecGenRng(rng, vecLen)
+  var ctx: EsCtx1 = EsCtx1(paramsCenter: @[], nCandidates: 150, sigma: 1.5, learningRate: 0.05)
+  ctx.paramsCenter = vecGenRng(rng, vecLen)
 
 
   
@@ -225,7 +227,7 @@ when isMainModule:
   for it in 0..<50000: # optimization loop
 
     if (it + int(2000/2)) mod 2000 == 0:
-      ctx.sigma *= 0.5
+      ctx.learningRate *= 0.6
 
 
     if true: # DBG?
@@ -237,12 +239,12 @@ when isMainModule:
 
     block: # generate candidates
       for n in 0..<ctx.nCandidates:
-        var candidate: EsCandidate0Ref = EsCandidate0Ref(params: @[], score: 0.0)
-        candidate.params = vecAdd(ctx.params, vecGenGaussian(ctx.sigma, ctx.params.len, rng))
+        var candidate: EsCandidate0Ref = EsCandidate0Ref(paramsDelta: @[], score: 0.0)
+        candidate.paramsDelta = vecGenGaussian(ctx.sigma, ctx.paramsCenter.len, rng)
         candidates.add(candidate)
     
     
-    evalCandidates(candidates)
+    evalCandidates(ctx.paramsCenter, candidates)
 
 
 
@@ -253,16 +255,17 @@ when isMainModule:
       bestScore = max(bestScore, iCandidate.score)
     
     if true:
-      echo(&"best score of iteration={it} sigma={ctx.sigma} bestScore={bestScore}")
+      echo(&"best score of iteration={it} lr={ctx.learningRate} bestScore={bestScore}")
 
     # * compute new parameters
     var paramAccu: seq[float64] = vecGenNull(vecLen)
     for iCandidate in candidates:
-      var scaledParameters: seq[float64] = scale(iCandidate.params, iCandidate.score)
+      var scaledParameters: seq[float64] = scale(iCandidate.paramsDelta, iCandidate.score)
     
     paramAccu = scale(paramAccu, 1.0/(float64(candidates.len)*ctx.sigma)) # compute average
-    
-    ctx.params = vecAdd(ctx.params, paramAccu)
+    paramAccu = scale(paramAccu, ctx.learningRate)
+
+    ctx.paramsCenter = vecAdd(ctx.paramsCenter, paramAccu)
 
 
 
