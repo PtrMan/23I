@@ -224,7 +224,7 @@ when isMainModule:
   
 
 
-  for it in 0..<50000: # optimization loop
+  for it in 0..<5000000: # optimization loop
 
     if (it + int(2000/2)) mod 2000 == 0:
       ctx.learningRate *= 0.6
@@ -261,6 +261,7 @@ when isMainModule:
     var paramAccu: seq[float64] = vecGenNull(vecLen)
     for iCandidate in candidates:
       var scaledParameters: seq[float64] = scale(iCandidate.paramsDelta, iCandidate.score)
+      paramAccu = vecAdd(paramAccu, scaledParameters)
     
     paramAccu = scale(paramAccu, 1.0/(float64(candidates.len)*ctx.sigma)) # compute average
     paramAccu = scale(paramAccu, ctx.learningRate)
