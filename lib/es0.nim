@@ -150,6 +150,53 @@ proc buildNn*(params: seq[float64]): Network1 =
 
 
 
+
+proc esStep0(evalCandidateFn: (proc(centerParams: seq[float64], candidates: seq[EsCandidate0Ref]):void), rng: var Rand, it: int64, vecLen: int, ctx: var EsCtx1) =
+
+
+  if true: # DBG?
+    echo("")
+    echo("")
+    echo("")
+  
+  var candidates: seq[EsCandidate0Ref] = @[]
+
+  block: # generate candidates
+    for n in 0..<ctx.nCandidates:
+      var candidate: EsCandidate0Ref = EsCandidate0Ref(paramsDelta: @[], score: 0.0)
+      candidate.paramsDelta = vecGenGaussian(ctx.sigma, ctx.paramsCenter.len, rng)
+      candidates.add(candidate)
+  
+  
+  evalCandidateFn(ctx.paramsCenter, candidates)
+
+
+
+
+  # compute best score
+  var bestScore: float64 = -1e20
+  for iCandidate in candidates:
+    bestScore = max(bestScore, iCandidate.score)
+  
+  if true:
+    echo(&"best score of iteration={it} lr={ctx.learningRate} bestScore={bestScore}")
+
+  # * compute new parameters
+  var paramAccu: seq[float64] = vecGenNull(vecLen)
+  for iCandidate in candidates:
+    var scaledParameters: seq[float64] = scale(iCandidate.paramsDelta, iCandidate.score)
+    paramAccu = vecAdd(paramAccu, scaledParameters)
+  
+  paramAccu = scale(paramAccu, 1.0/(float64(candidates.len)*ctx.sigma)) # compute average
+  paramAccu = scale(paramAccu, ctx.learningRate)
+
+  ctx.paramsCenter = vecAdd(ctx.paramsCenter, paramAccu)
+
+
+
+
+
+
 when isMainModule:
 
   
@@ -208,7 +255,7 @@ when isMainModule:
 
 
 
-
+  var evalCandidateFn: (proc(centerParams: seq[float64], candidates: seq[EsCandidate0Ref]):void) = evalCandidates
 
 
 
@@ -221,53 +268,15 @@ when isMainModule:
   ctx.paramsCenter = vecGenRng(rng, vecLen)
 
 
-  
+    
 
 
   for it in 0..<5000000: # optimization loop
 
     if (it + int(2000/2)) mod 2000 == 0:
       ctx.learningRate *= 0.6
-
-
-    if true: # DBG?
-      echo("")
-      echo("")
-      echo("")
     
-    var candidates: seq[EsCandidate0Ref] = @[]
-
-    block: # generate candidates
-      for n in 0..<ctx.nCandidates:
-        var candidate: EsCandidate0Ref = EsCandidate0Ref(paramsDelta: @[], score: 0.0)
-        candidate.paramsDelta = vecGenGaussian(ctx.sigma, ctx.paramsCenter.len, rng)
-        candidates.add(candidate)
-    
-    
-    evalCandidates(ctx.paramsCenter, candidates)
-
-
-
-
-    # compute best score
-    var bestScore: float64 = -1e20
-    for iCandidate in candidates:
-      bestScore = max(bestScore, iCandidate.score)
-    
-    if true:
-      echo(&"best score of iteration={it} lr={ctx.learningRate} bestScore={bestScore}")
-
-    # * compute new parameters
-    var paramAccu: seq[float64] = vecGenNull(vecLen)
-    for iCandidate in candidates:
-      var scaledParameters: seq[float64] = scale(iCandidate.paramsDelta, iCandidate.score)
-      paramAccu = vecAdd(paramAccu, scaledParameters)
-    
-    paramAccu = scale(paramAccu, 1.0/(float64(candidates.len)*ctx.sigma)) # compute average
-    paramAccu = scale(paramAccu, ctx.learningRate)
-
-    ctx.paramsCenter = vecAdd(ctx.paramsCenter, paramAccu)
-
+    esStep0(evalCandidateFn, rng, it, vecLen, ctx)
 
 
 
