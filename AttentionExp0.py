@@ -58,6 +58,30 @@ class SelfAttentionLayer(torch.nn.Module):
 
         return t2
 
+# nonlinear
+class NonlinearA(torch.nn.Module):
+    def __init__(self):
+        super(NonlinearA, self).__init__()
+
+        layer0NonlinearDim = 220 #170 #152 #52 # dimensionality of nonlinear layer
+
+        self.nonlinearLayer0_0 = torch.nn.Parameter(torch.rand((4*embeddingDim + ctxLen*embeddingDim,layer0NonlinearDim,))*0.05)
+        self.nonlinearLayer0_0_bias = torch.nn.Parameter(torch.rand((layer0NonlinearDim))*0.005)
+        self.nonlinearLayer0_1 = torch.nn.Parameter(torch.rand((layer0NonlinearDim,embeddingDim,))*0.05)
+
+    def forward(self, x):
+        t9 = x @ self.nonlinearLayer0_0
+        t6 = torch.nn.functional.relu(t9)
+        t7 = t6 + self.nonlinearLayer0_0_bias # add bias
+        t10 = t7 @ self.nonlinearLayer0_1
+        return t10
+
+
+
+
+
+
+
 class Nn0(torch.nn.Module):
     # /param dk dimension of queries and keys
     def __init__(self, dk, nTokens, ctxLen, embeddingDim):
@@ -75,6 +99,12 @@ class Nn0(torch.nn.Module):
         if True:
             shape = (ctxLen,dk)
             createdLayer = []
+            z = SelfAttentionLayer(ctxLen, dk)
+            submodulesA.append(z)
+            createdLayer.append(z)
+            z = SelfAttentionLayer(ctxLen, dk)
+            submodulesA.append(z)
+            createdLayer.append(z)
             z = SelfAttentionLayer(ctxLen, dk)
             submodulesA.append(z)
             createdLayer.append(z)
@@ -130,13 +160,23 @@ class Nn0(torch.nn.Module):
 
         self.submodulesA = torch.nn.ModuleList(submodulesA) # register sub-modules
 
+
+
+        self.submoduleNonlinearAfterLayer0 = NonlinearA()
+        self.submodulesB = torch.nn.ModuleList([self.submoduleNonlinearAfterLayer0])
+
         
-        layer0NonlinearDim = 152 #52 # dimensionality of nonlinear layer
+        #layer0NonlinearDim = 220 #170 #152 #52 # dimensionality of nonlinear layer
         
         #self.nonlinearLayer0_0 = torch.nn.Parameter(torch.rand((embeddingDim*2,layer0NonlinearDim,))*0.05)
-        self.nonlinearLayer0_0 = torch.nn.Parameter(torch.rand((936,layer0NonlinearDim,))*0.05)
-        self.nonlinearLayer0_0_bias = torch.nn.Parameter(torch.rand((layer0NonlinearDim))*0.005)
-        self.nonlinearLayer0_1 = torch.nn.Parameter(torch.rand((layer0NonlinearDim,embeddingDim,))*0.05)
+
+        print(4*dk + ctxLen*embeddingDim)
+        #kofokfokfko
+
+        #                                                       4*embeddingDim + ctxLen*embeddingDim no
+        #self.nonlinearLayer0_0 = torch.nn.Parameter(torch.rand((4*embeddingDim + ctxLen*embeddingDim,layer0NonlinearDim,))*0.05)
+        #self.nonlinearLayer0_0_bias = torch.nn.Parameter(torch.rand((layer0NonlinearDim))*0.005)
+        #self.nonlinearLayer0_1 = torch.nn.Parameter(torch.rand((layer0NonlinearDim,embeddingDim,))*0.05)
 
 
         
@@ -164,6 +204,16 @@ class Nn0(torch.nn.Module):
         # END    self attention layer
         """
 
+        # iterate over heads and add up the results
+        res0 = []
+        for iHead in self.layers[0]:
+            t3 = iHead.forward(x0)
+            t3 = t3.sum(dim=1) # compute "context vector"
+            res0.append(t3)
+        
+        t14 = torch.cat( tuple(res0) ) # concatenate from heads
+
+        """
         # head[0]
         t2 = self.layers[0][0].forward(x0)
 
@@ -186,6 +236,7 @@ class Nn0(torch.nn.Module):
 
         t14 = torch.cat((t3, t13)) # concatenate from heads
         #t14 = torch.cat((t14, x0))
+        """
 
         #print(x0.shape)
         #fkofokfkofko
@@ -204,12 +255,19 @@ class Nn0(torch.nn.Module):
         #t80 = t14
         t80 = t71
 
+        #print(t14.shape) # 200
+        #print(t70.shape) # 1500
+
+        #print(t80.shape)
+        #fkoofkokfokf
+
 
         # apply non-linear layer
-        t9 = t80 @ self.nonlinearLayer0_0
-        t6 = torch.nn.functional.relu(t9)
-        t7 = t6 + self.nonlinearLayer0_0_bias # add bias
-        t10 = t7 @ self.nonlinearLayer0_1
+        #t9 = t80 @ self.nonlinearLayer0_0
+        #t6 = torch.nn.functional.relu(t9)
+        #t7 = t6 + self.nonlinearLayer0_0_bias # add bias
+        #t10 = t7 @ self.nonlinearLayer0_1
+        t10 = self.submoduleNonlinearAfterLayer0.forward(t80)
 
         
         
@@ -268,25 +326,6 @@ class Nn0(torch.nn.Module):
         return t5
 
 
-ctxLen = 24 #10 # length of the context
-nTokens = 500 # number of tokens
-
-embeddingDim = 36 # 24 # 12 # size of the embedding vector
-
-
-#dk = 3
-dk = 92 #72 # 66 # 46 # 16 # 8   # dimension of self-attention matrix
-
-
-# tokens to train
-txtTokens = []
-#txtTokens = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 7, 4]
-
-# fill with testdata
-#for z in range(500):
-#    t0 = random.randint(0, nTokens-1)
-#    txtTokens.append(t0)
-
 
 def readTokens(filepath):
     f = open(filepath, 'r')
@@ -296,152 +335,175 @@ def readTokens(filepath):
     z1 = z0.split(', ')
     z2 = list(map(lambda z: int(z), z1))
     return z2
-    
-txtTokens = [0] * (ctxLen-1) # fill up with zero for being able to make sense of the beginning
-#txtTokens = readTokens('./trainTokensPROTO.txt')
-#txtTokens2 = readTokens('./trainTokens0.txt')
-#txtTokens2 = readTokens('./trainTokens1.txt')
-txtTokens2 = readTokens('./trainTokens2small.txt')
-txtTokens = txtTokens + txtTokens2
-#print(txtTokens) # DBG
-#r = r + 1
 
 
-nn0 = Nn0(dk=dk, nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim)
+if __name__ == '__main__':
 
 
-print(list(nn0.parameters()))
+    ctxLen = 30 #24 #10 # length of the context
+    nTokens = 5000 #500 # number of tokens
 
-# see https://stackoverflow.com/questions/49201236/check-the-total-number-of-parameters-in-a-pytorch-model
-pytorchTotalParams = sum(p.numel() for p in nn0.parameters() if p.requires_grad)
-print(f'nParams={pytorchTotalParams}')
-
-
-#tokensVal = torch.rand((nTokens, embeddingDim)) # matrix with values of tokens
-
-positionalEncodings = calcPositionalEncoding(embeddingDim, ctxLen)
+    embeddingDim = 50 #36 # 24 # 12 # size of the embedding vector
 
 
+    #dk = 3
+    dk = 150 #92 #72 # 66 # 46 # 16 # 8   # dimension of self-attention matrix
 
 
+    # tokens to train
+    txtTokens = []
+    #txtTokens = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 7, 4]
 
+    # fill with testdata
+    #for z in range(500):
+    #    t0 = random.randint(0, nTokens-1)
+    #    txtTokens.append(t0)
 
-# 1st dimension is dimensionality of embedding
-# 2nd dimension is number of input tokens
-shape = (embeddingDim, ctxLen)
-
-
-
-lossFn = torch.nn.MSELoss()
-
-
-#optimizer = torch.optim.SGD(nn0.parameters(), lr=lr)
-optimizer = torch.optim.Adam(nn0.parameters(), lr=0.0004*0.8) # 0.001 great results      0.005 way to fast
-
-#nSamples = 1 # number of samples in one epoch
-
-avgLoss = None
-
-correctPredictions = 0
-wrongPredictions = 0
-
-bestRatio = 0.0 # best ratio - used for deciding when to store checkpoint
-
-for iStep in range(int(len(txtTokens)*20000.0)): # 
-    selStartIdx = random.randrange(2**20) % (len(txtTokens)-ctxLen)
-
-    slice0 = txtTokens[selStartIdx:selStartIdx+ctxLen] # compute slice of tokens
-    
-    if True:
-        t0 = nn0.inputEmbeddings(torch.tensor(slice0)) # lookup embeddings
-    else: # old embedding crap
-        t0 = list(map(lambda z : tokensVal[z], slice0)) # look up embeddings by tokens
-
-    #print(x)
-    #xxxx
         
-    embeddings = []
-    for iIdx in range(positionalEncodings.shape[0]):
-        embeddingWithPositionalEncoding = positionalEncodings[iIdx]*t0[iIdx] # multiply embedding with positional encoding
-        embeddings.append(embeddingWithPositionalEncoding)
+    txtTokens = [0] * (ctxLen-1) # fill up with zero for being able to make sense of the beginning
+    #txtTokens = readTokens('./trainTokensPROTO.txt')
+    #txtTokens2 = readTokens('./trainTokens0.txt')
+    #txtTokens2 = readTokens('./trainTokens1.txt')
+    #txtTokens2 = readTokens('./trainTokens2small.txt')
+    txtTokens2 = readTokens('./outTokens0.txt')
+    txtTokens = txtTokens + txtTokens2
+    #print(txtTokens) # DBG
+    #r = r + 1
 
-    x = torch.stack(embeddings, dim=0) # convert list with vectors to matrix
-    x = torch.transpose(x, 0, 1)
+
+    nn0 = Nn0(dk=dk, nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim)
+
+
+    print(list(nn0.parameters()))
+
+    # see https://stackoverflow.com/questions/49201236/check-the-total-number-of-parameters-in-a-pytorch-model
+    pytorchTotalParams = sum(p.numel() for p in nn0.parameters() if p.requires_grad)
+    print(f'nParams={pytorchTotalParams}')
+
+
+    #tokensVal = torch.rand((nTokens, embeddingDim)) # matrix with values of tokens
+
+    positionalEncodings = calcPositionalEncoding(embeddingDim, ctxLen)
+
+
+
+
+
+
+    # 1st dimension is dimensionality of embedding
+    # 2nd dimension is number of input tokens
+    #shape = (embeddingDim, ctxLen)
+
+
+
+    lossFn = torch.nn.MSELoss()
+
+
+    #optimizer = torch.optim.SGD(nn0.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(nn0.parameters(), lr=0.0004*0.8) # 0.001 great results      0.005 way to fast
+
+    #nSamples = 1 # number of samples in one epoch
+
+    avgLoss = None
+
+    correctPredictions = 0
+    wrongPredictions = 0
+
+    bestRatio = 0.0 # best ratio - used for deciding when to store checkpoint
+
+    for iStep in range(int(len(txtTokens)*20000.0)): # 
+        selStartIdx = random.randrange(2**20) % (len(txtTokens)-ctxLen)
+
+        slice0 = txtTokens[selStartIdx:selStartIdx+ctxLen] # compute slice of tokens
         
+        if True:
+            t0 = nn0.inputEmbeddings(torch.tensor(slice0)) # lookup embeddings
+        else: # old embedding crap
+            t0 = list(map(lambda z : tokensVal[z], slice0)) # look up embeddings by tokens
+
+        #print(x)
+        #xxxx
+            
+        embeddings = []
+        for iIdx in range(positionalEncodings.shape[0]):
+            embeddingWithPositionalEncoding = positionalEncodings[iIdx]*t0[iIdx] # multiply embedding with positional encoding
+            embeddings.append(embeddingWithPositionalEncoding)
+
+        x = torch.stack(embeddings, dim=0) # convert list with vectors to matrix
+        x = torch.transpose(x, 0, 1)
+            
 
 
-    #print(x)
-    #print(x.shape)
-    
-    
-    yToken = txtTokens[selStartIdx+ctxLen] # token to be predicted
-    #print(yToken) # DBG
-    #y = tokensVal[yToken] # embedding of token to be predicted
-    #print(y) # DBG
-    y = torch.zeros((nTokens))
-    y[yToken] = 1.0
-    
-    
-    
-    
-    
-    
-    pred = nn0(x)
-    #print(f'{pred} <<< pred') # DBG
-    
-    #print(pred.shape)
-    #print(y.shape)
-    #gkgkkg = kgtkjgjkf
-    
-    topkRes = torch.topk(pred, 1)
-    yTokenIdx = topkRes.indices[0].item()
-    if yToken == yTokenIdx:
-        correctPredictions+=1
-    else:
-        wrongPredictions+=1
-    
-    loss = lossFn(pred, y) # compute loss
-
-    # Backpropagation
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    
-    lossVal = loss.item()
-    
-    if avgLoss is None:
-        avgLoss = lossVal
-    avgLoss = avgLoss * (1.0 - 0.001) + lossVal * 0.001
-
-    if iStep % 2500 == 0:
-        lossVal, current = loss.item(), (iStep + 1) * len(x)
-        epoch = float(iStep) / len(txtTokens) # compute current epoch
-        print(f"loss={lossVal:>7f}  avgLoss={avgLoss:>7f}   [epoch={epoch:>4f}]")
+        #print(x)
+        #print(x.shape)
         
         
-        currentPredRatio = correctPredictions/(correctPredictions+wrongPredictions)
+        yToken = txtTokens[selStartIdx+ctxLen] # token to be predicted
+        #print(yToken) # DBG
+        #y = tokensVal[yToken] # embedding of token to be predicted
+        #print(y) # DBG
+        y = torch.zeros((nTokens))
+        y[yToken] = 1.0
         
         
-        print(f'correctPredictions={correctPredictions} wrongPredictions={wrongPredictions} correctPredRatio={currentPredRatio:>4f}')
         
-        # reset counters
-        correctPredictions = 0
-        wrongPredictions = 0
         
-        # store model together with architecture
-        torch.save(nn0, './models/model-snapshot.pth')
+        
+        
+        pred = nn0(x)
+        #print(f'{pred} <<< pred') # DBG
+        
+        #print(pred.shape)
+        #print(y.shape)
+        #gkgkkg = kgtkjgjkf
+        
+        topkRes = torch.topk(pred, 1)
+        yTokenIdx = topkRes.indices[0].item()
+        if yToken == yTokenIdx:
+            correctPredictions+=1
+        else:
+            wrongPredictions+=1
+        
+        loss = lossFn(pred, y) # compute loss
 
-        if currentPredRatio > bestRatio:
-            bestRatio = currentPredRatio
+        # Backpropagation
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        
+        lossVal = loss.item()
+        
+        if avgLoss is None:
+            avgLoss = lossVal
+        avgLoss = avgLoss * (1.0 - 0.001) + lossVal * 0.001
+
+        if iStep % 2500 == 0:
+            lossVal, current = loss.item(), (iStep + 1) * len(x)
+            epoch = float(iStep) / len(txtTokens) # compute current epoch
+            print(f"loss={lossVal:>7f}  avgLoss={avgLoss:>7f}   [epoch={epoch:>4f}]")
+            
+            
+            currentPredRatio = correctPredictions/(correctPredictions+wrongPredictions)
+            
+            
+            print(f'correctPredictions={correctPredictions} wrongPredictions={wrongPredictions} correctPredRatio={currentPredRatio:>4f}')
+            
+            # reset counters
+            correctPredictions = 0
+            wrongPredictions = 0
             
             # store model together with architecture
-            torch.save(nn0, './models/model-bestRatio-snapshot.pth')
+            torch.save(nn0, './models/model-snapshot.pth')
+
+            if currentPredRatio > bestRatio:
+                bestRatio = currentPredRatio
+                
+                # store model together with architecture
+                torch.save(nn0, './models/model-bestRatio-snapshot.pth')
 
 
-print('DONE')
+    print('DONE')
 
 
-# store model together with architecture
-torch.save(nn0, './models/model.pth')
-
-# result: this makes it up to 98.28% after 500 epochs
+    # store model together with architecture
+    torch.save(nn0, './models/model.pth')
