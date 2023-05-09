@@ -444,4 +444,4 @@ print('DONE')
 # store model together with architecture
 torch.save(nn0, './models/model.pth')
 
-# result: this makes it up to 88% after 310 epochs
+# result: this makes it up to 98.28% after 500 epochs
