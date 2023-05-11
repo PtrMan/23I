@@ -59,13 +59,15 @@ class SelfAttentionLayer(torch.nn.Module):
         return t2
 
 # nonlinear
+# OUTDATED
+"""
 class NonlinearA(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, inputDim):
         super(NonlinearA, self).__init__()
 
-        layer0NonlinearDim = 220 #170 #152 #52 # dimensionality of nonlinear layer
+        layer0NonlinearDim = 180 #170 #152 #52 # dimensionality of nonlinear layer
 
-        self.nonlinearLayer0_0 = torch.nn.Parameter(torch.rand((4*embeddingDim + ctxLen*embeddingDim,layer0NonlinearDim,))*0.05)
+        self.nonlinearLayer0_0 = torch.nn.Parameter(torch.rand((inputDim,layer0NonlinearDim,))*0.05)
         self.nonlinearLayer0_0_bias = torch.nn.Parameter(torch.rand((layer0NonlinearDim))*0.005)
         self.nonlinearLayer0_1 = torch.nn.Parameter(torch.rand((layer0NonlinearDim,embeddingDim,))*0.05)
 
@@ -75,6 +77,45 @@ class NonlinearA(torch.nn.Module):
         t7 = t6 + self.nonlinearLayer0_0_bias # add bias
         t10 = t7 @ self.nonlinearLayer0_1
         return t10
+"""
+
+
+# module which applies nonlinearity
+class ModuleForwardNonlinear(torch.nn.Module):
+    def __init__(self, inDim, hiddenDims, outDim):
+        super(ModuleForwardNonlinear, self).__init__()
+
+        # commented because non-modular
+        """
+        # ordered dict describing layers
+        orderedDict = [
+          ('conv1', torch.nn.Linear(inDim, nHiddens[0])),
+          ('relu1', nn.ReLU()),
+          ('conv2', torch.nn.Linear(nHiddens[0], nHiddens[1])),
+          ('relu2', nn.ReLU()),
+          ('out', torch.nn.Linear(nHiddens[1], outDim))
+        ]
+
+        self.linearReluStack = torch.nn.Sequential(orderedDict)
+        """
+
+
+        # hidden + output
+        dims = hiddenDims
+        dims.append(outDim)
+
+        self.linearReluStack = torch.nn.Sequential()
+        self.linearReluStack.append(torch.nn.Linear(inDim, dims[0])) # linear layer to first hidden
+
+        for iIdx in range(len(dims)-1):
+            self.linearReluStack.append( torch.nn.ReLU() )
+            self.linearReluStack.append( torch.nn.Linear(dims[iIdx], dims[iIdx+1]) )
+        
+        # TODO< access weights to init >
+        #       self.linearReluStack[4].weight
+
+    def forward(self, x):
+        return self.linearReluStack(x)
 
 
 
@@ -97,39 +138,13 @@ class Nn0(torch.nn.Module):
         submodulesA = []
 
         if True:
-            shape = (ctxLen,dk)
+            #shape = (ctxLen,dk)
             createdLayer = []
-            z = SelfAttentionLayer(ctxLen, dk)
-            submodulesA.append(z)
-            createdLayer.append(z)
-            z = SelfAttentionLayer(ctxLen, dk)
-            submodulesA.append(z)
-            createdLayer.append(z)
-            z = SelfAttentionLayer(ctxLen, dk)
-            submodulesA.append(z)
-            createdLayer.append(z)
-            z = SelfAttentionLayer(ctxLen, dk)
-            submodulesA.append(z)
-            createdLayer.append(z)
-            """
-            createdHead = {}
-            # weights for 'query', 'key', 'value'
-            createdHead["wq"] = torch.nn.Parameter(torch.rand(shape)*0.05)
-            createdHead["wk"] = torch.nn.Parameter(torch.rand(shape)*0.05)
-            createdHead["wv"] = torch.nn.Parameter(torch.rand(shape)*0.05)
             
-            createdLayer.append(createdHead)
-
-            createdHead = {}
-            # weights for 'query', 'key', 'value'
-            createdHead["wq"] = torch.nn.Parameter(torch.rand(shape)*0.05)
-            createdHead["wk"] = torch.nn.Parameter(torch.rand(shape)*0.05)
-            createdHead["wv"] = torch.nn.Parameter(torch.rand(shape)*0.05)
-            
-            createdLayer.append(createdHead)
-            """
-
-
+            for z in range(3):
+                z = SelfAttentionLayer(ctxLen, dk)
+                submodulesA.append(z)
+                createdLayer.append(z)
 
             self.layers.append(createdLayer)
             #del createdHead
@@ -139,7 +154,7 @@ class Nn0(torch.nn.Module):
             #shape = (embeddingDim,dk)
             createdLayer = []
 
-            z = SelfAttentionLayer(ctxLen, dk)
+            z = SelfAttentionLayer(embeddingDim, dk)
             submodulesA.append(z)
             createdLayer.append(z)
 
@@ -161,16 +176,21 @@ class Nn0(torch.nn.Module):
         self.submodulesA = torch.nn.ModuleList(submodulesA) # register sub-modules
 
 
-
-        self.submoduleNonlinearAfterLayer0 = NonlinearA()
+        inputDim = 3*embeddingDim + ctxLen*embeddingDim
+        self.submoduleNonlinearAfterLayer0 = ModuleForwardNonlinear(inputDim, [220, 180], embeddingDim)
+        del inputDim
         self.submodulesB = torch.nn.ModuleList([self.submoduleNonlinearAfterLayer0])
+
+        self.submoduleNonlinearAfterLayer1 = ModuleForwardNonlinear(embeddingDim+1, [180, 160], embeddingDim)
+        self.submodulesC = torch.nn.ModuleList([self.submoduleNonlinearAfterLayer1])
+
 
         
         #layer0NonlinearDim = 220 #170 #152 #52 # dimensionality of nonlinear layer
         
         #self.nonlinearLayer0_0 = torch.nn.Parameter(torch.rand((embeddingDim*2,layer0NonlinearDim,))*0.05)
 
-        print(4*dk + ctxLen*embeddingDim)
+        #print(4*dk + ctxLen*embeddingDim)
         #kofokfokfko
 
         #                                                       4*embeddingDim + ctxLen*embeddingDim no
@@ -286,9 +306,20 @@ class Nn0(torch.nn.Module):
 
 
         # LAYER #1
+        res0 = []
+        for iHead in self.layers[1]:
+            t111 = iHead.forward(t11)
+            t111 = t111.sum(dim=1) # compute "context vector"
+            res0.append(t111)
+        
+        t140 = torch.cat( tuple(res0) ) # concatenate from heads
+        t70 = torch.reshape(t11, (-1,)) # convert to one dimensional matrix
+        t71 = torch.cat((t140, t70))
+
+        #t777 = t11
+        t777 = t71
+
         """
-
-
         t8 = self.selfAttention.forward(t11)
         t9 = t8 #t8.sum(dim=1) # compute "context vector"
         
@@ -309,13 +340,17 @@ class Nn0(torch.nn.Module):
         
         # TODO< multiply by matrix to get output of encoder layer! >
         """
+
+        # t7771 = t777
+        t7771 = self.submoduleNonlinearAfterLayer1.forward(t777)
+
+
         
         
         # OUT propbability head
         
         # multiply with matrix to get probabilities
-        #t4 = torch.matmul(t52, self.contextVecToProbabilityVec)
-        t4 = torch.matmul(t11, self.contextVecToProbabilityVec)
+        t4 = t7771 @ self.contextVecToProbabilityVec
         t5 = t4 + self.contextVecToProbabilityVecBias
 
         # HACKY
@@ -343,16 +378,15 @@ if __name__ == '__main__':
     ctxLen = 30 #24 #10 # length of the context
     nTokens = 5000 #500 # number of tokens
 
-    embeddingDim = 50 #36 # 24 # 12 # size of the embedding vector
+    embeddingDim = 88 # 50 #36 # 24 # 12 # size of the embedding vector
 
 
     #dk = 3
-    dk = 150 #92 #72 # 66 # 46 # 16 # 8   # dimension of self-attention matrix
+    dk = 170 #150 #92 #72 # 66 # 46 # 16 # 8   # dimension of self-attention matrix
 
 
     # tokens to train
     txtTokens = []
-    #txtTokens = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1, 2, 7, 4]
 
     # fill with testdata
     #for z in range(500):
@@ -364,8 +398,8 @@ if __name__ == '__main__':
     #txtTokens = readTokens('./trainTokensPROTO.txt')
     #txtTokens2 = readTokens('./trainTokens0.txt')
     #txtTokens2 = readTokens('./trainTokens1.txt')
-    #txtTokens2 = readTokens('./trainTokens2small.txt')
-    txtTokens2 = readTokens('./outTokens0.txt')
+    txtTokens2 = readTokens('./trainTokens2small.txt')
+    #txtTokens2 = readTokens('./outTokens0.txt')
     txtTokens = txtTokens + txtTokens2
     #print(txtTokens) # DBG
     #r = r + 1
@@ -411,7 +445,7 @@ if __name__ == '__main__':
 
     bestRatio = 0.0 # best ratio - used for deciding when to store checkpoint
 
-    for iStep in range(int(len(txtTokens)*20000.0)): # 
+    for iStep in range(int(len(txtTokens)*200.0)): # 
         selStartIdx = random.randrange(2**20) % (len(txtTokens)-ctxLen)
 
         slice0 = txtTokens[selStartIdx:selStartIdx+ctxLen] # compute slice of tokens
