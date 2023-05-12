@@ -429,28 +429,13 @@ class Nn2(torch.nn.Module):
 
 
 
-        filterWindowDecay = 0.3
-        filterWindowBias = 0.0005
-        # compute filter
-        filter_ = torch.tensor([exp(-z*filterWindowDecay)*(1.0-filterWindowBias)+filterWindowBias for z in range(32)])
-        #print(filter_)
 
         # learned window parameters
         self.a = torch.nn.Parameter(torch.randn(32))
+
+        self.updateA()
         #print(a)
 
-        tWindow = torch.multiply(self.a, filter_)
-
-        #print(tWindow)
-
-
-        # build Toeplitz kernel matrix by values (take values from vector)
-        shapeDim = tWindow.shape[0]
-        s1 = torch.zeros((shapeDim,shapeDim,))
-        for iIdx in range(shapeDim):
-            s1 = s1 + torch.diag( torch.ones(shapeDim-iIdx)*tWindow[iIdx], -iIdx )
-
-        self.s1 = s1
         #self.s1 = torch.tril( torch.ones((32,32,)) )
 
         self.d1 = torch.diag( torch.randn(32) ) * 0.05
@@ -467,9 +452,31 @@ class Nn2(torch.nn.Module):
         self.inputEmbeddings = torch.nn.Embedding(nTokens, embeddingDim)
     
     # copy values after .backward()
-    def copyAfterBackward(self):
+    def updateA(self):
+        
+        filterWindowDecay = 0.3
+        filterWindowBias = 0.0005
+        # compute filter
+        filter_ = torch.tensor([exp(-z*filterWindowDecay)*(1.0-filterWindowBias)+filterWindowBias for z in range(32)])
+        #print(filter_)
+
+
+        tWindow = torch.multiply(self.a, filter_)
+
+        #print(tWindow)
+
+
+        # build Toeplitz kernel matrix by values (take values from vector)
+        shapeDim = tWindow.shape[0]
+        s1 = torch.zeros((shapeDim,shapeDim,))
+        for iIdx in range(shapeDim):
+            s1 = s1 + torch.diag( torch.ones(shapeDim-iIdx)*tWindow[iIdx], -iIdx )
+
+        self.s1 = s1
+        
         # FIXME< don't copy, retain graph until last iteration! >
-        self.s1 = self.s1.clone().detach()
+        #self.s1 = self.s1.clone().detach()
+        pass
 
     def forward(self, x):
         t0 = torch.reshape(x, (-1,)) # convert to one dimensional matrix
@@ -695,12 +702,18 @@ if __name__ == '__main__':
             
             loss = lossFn(pred, y) # compute loss
             loss = loss / nMicrobatch # see https://stackoverflow.com/questions/62067400/understanding-accumulated-gradients-in-pytorch
-        
-            loss.backward()
+            
+            # HACKY because we use retain_graph !
+            loss.backward(retain_graph=(ibatchIdx!=(nMicrobatch-1)))
 
-            nn0.copyAfterBackward()
+            #nn0.copyAfterBackward()
         
         optimizer.step()
+
+        nn0.updateA()
+
+
+        #print(f'{nn0.a}')
         
         lossVal = loss.item()
         
