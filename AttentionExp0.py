@@ -1,6 +1,6 @@
 import torch
 import numpy
-from math import sqrt
+from math import sqrt, exp
 import random
 
 
@@ -29,7 +29,10 @@ def calcPositionalEncoding(inputMaxLen, dimModel):
 def transpose2(v):
     return torch.transpose(v, 0, 1)
 
-
+# helper to convert from 1d vector to 2d matrix
+def matConv1dTo2d(v):
+    # https://stackoverflow.com/questions/43328632/pytorch-reshape-tensor-dimension
+    return v.unsqueeze(0)
 
 
 # module for self-attention
@@ -122,7 +125,7 @@ class ModuleForwardNonlinear(torch.nn.Module):
 
 
 
-
+# NN which uses Attention blocks but has a suboptimal architecture which only reaches 11% training accuracy
 class Nn0(torch.nn.Module):
     # /param dk dimension of queries and keys
     def __init__(self, dk, nTokens, ctxLen, embeddingDim):
@@ -362,6 +365,190 @@ class Nn0(torch.nn.Module):
 
 
 
+
+
+# experimental NN based on only ReLU
+class Nn1(torch.nn.Module):
+    # /param dk dimension of queries and keys
+    def __init__(self, nTokens, ctxLen, embeddingDim):
+        super(Nn1, self).__init__()
+
+        inputDim = ctxLen*embeddingDim
+        self.submoduleNonlinearAfterLayer0 = ModuleForwardNonlinear(inputDim, [220, 180], embeddingDim)
+        del inputDim
+        self.submodulesB = torch.nn.ModuleList([self.submoduleNonlinearAfterLayer0])
+
+        
+        # weights for context vector to probability vector
+        #self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((embeddingDim,nTokens,))*0.05)
+        #self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((layer0NonlinearDim,nTokens,))*0.05)
+        self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((embeddingDim,nTokens,))*0.05)
+        self.contextVecToProbabilityVecBias = torch.nn.Parameter(torch.rand((nTokens))*0.005)
+        
+        self.inputEmbeddings = torch.nn.Embedding(nTokens, embeddingDim)
+        
+    def forward(self, x0):
+        # LAYER #0
+
+
+        t0 = torch.reshape(x0, (-1,)) # convert to one dimensional matrix
+        
+        t1 = self.submoduleNonlinearAfterLayer0.forward(t0)
+
+        
+        
+        
+        # OUT propbability head
+        
+        # multiply with matrix to get probabilities
+        t4 = t1 @ self.contextVecToProbabilityVec
+        t5 = t4 + self.contextVecToProbabilityVecBias
+
+        # HACKY
+        t5 = torch.squeeze(t5)
+        
+        #print(t4) # DBG
+        
+        return t5
+
+
+
+
+# experimental NN attempting to implement hyena hierachy
+#
+# TODO< math isn't correct because it doesn't follow the hyena algorithm as described in the paper! >
+class Nn2(torch.nn.Module):
+    # /param dk dimension of queries and keys
+    def __init__(self, nTokens, ctxLen, embeddingDim):
+        super(Nn2, self).__init__()
+
+        # random projection matrices
+        inputDim = ctxLen*embeddingDim
+        self.proj0 = torch.nn.Parameter(torch.rand((inputDim,32,))*0.05, requires_grad=False) # not learned
+        self.proj1 = torch.nn.Parameter(torch.rand((inputDim,32,))*0.05, requires_grad=False) # not learned
+
+
+
+        filterWindowDecay = 0.3
+        filterWindowBias = 0.0005
+        # compute filter
+        filter_ = torch.tensor([exp(-z*filterWindowDecay)*(1.0-filterWindowBias)+filterWindowBias for z in range(32)])
+        #print(filter_)
+
+        # learned window parameters
+        self.a = torch.nn.Parameter(torch.randn(32))
+        #print(a)
+
+        tWindow = torch.multiply(self.a, filter_)
+
+        #print(tWindow)
+
+
+        # build Toeplitz kernel matrix by values (take values from vector)
+        shapeDim = tWindow.shape[0]
+        s1 = torch.zeros((shapeDim,shapeDim,))
+        for iIdx in range(shapeDim):
+            s1 = s1 + torch.diag( torch.ones(shapeDim-iIdx)*tWindow[iIdx], -iIdx )
+
+        self.s1 = s1
+        #self.s1 = torch.tril( torch.ones((32,32,)) )
+
+        self.d1 = torch.diag( torch.randn(32) ) * 0.05
+
+        
+        self.convYtoLowerDim = torch.nn.Parameter(torch.rand((32*32,80,))*0.5*(1.0/(32*32)))
+
+        # weights for context vector to probability vector
+        #self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((embeddingDim,nTokens,))*0.05)
+        #self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((layer0NonlinearDim,nTokens,))*0.05)
+        self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((80,nTokens,))*0.5*(1.0/80))
+        self.contextVecToProbabilityVecBias = torch.nn.Parameter(torch.rand((nTokens))*0.005)
+        
+        self.inputEmbeddings = torch.nn.Embedding(nTokens, embeddingDim)
+    
+    # copy values after .backward()
+    def copyAfterBackward(self):
+        # FIXME< don't copy, retain graph until last iteration! >
+        self.s1 = self.s1.clone().detach()
+
+    def forward(self, x):
+        t0 = torch.reshape(x, (-1,)) # convert to one dimensional matrix
+        #print(f'{t0.shape} t0')
+        t0 = matConv1dTo2d(t0)
+        #print(f'{t0.shape} t0')
+
+
+        #print('///')
+        #print(t0.shape)
+        #print(self.proj0.shape)
+        #print('+++')
+
+
+        # project input with (frozen) input projections
+        v = transpose2(t0 @ self.proj0)
+        x1 = transpose2(t0 @ self.proj1)
+
+        #print(f'{v.shape} v')
+        #print(f'{x1.shape} x1')
+        #gkogogkogko
+
+        # compute results of hyena hierachy
+        z1 = v
+        #z1 = transpose2(z1)
+
+        #print(f'{x1.shape} A')
+
+        h1 = self.s1 @ self.d1 # compute hyena matrix
+
+        if h1.shape != (32, 32, ):  # must be matrix!
+            fkfkddokkodfokdf
+
+        #print(f'{t5.shape} t5')
+
+        #print(f'{z1.shape} z1')
+        #print(f'{h1.shape} h1')
+
+        #t6 = (h0 @ t5)
+        t6 = h1 @ z1
+        #t6 = (z1 @ h1)
+        #print(f'{t6.shape} C')
+
+        #print(f'{x1.shape} x1')
+        #print(f'{t6.shape} t6')
+
+        z2 = x1 @ transpose2(t6)
+
+        #print(f'{z2.shape} z2')
+
+        if z2.shape != (32, 32, ): # must be matrix!
+            fkfkddokkodfokdf
+
+
+        y = z2
+        y = torch.reshape(y, (-1,)) # convert to one dimensional matrix
+        
+        
+        # do transform from y to y0 to reduce dimensionality and thus parameter count
+        y0 = y @ self.convYtoLowerDim
+
+        
+        # OUT propbability head
+        
+        # multiply with matrix to get probabilities
+        t4 = y0 @ self.contextVecToProbabilityVec
+        t5 = t4 + self.contextVecToProbabilityVecBias
+
+        # HACKY
+        t5 = torch.squeeze(t5)
+        
+        #print(t4) # DBG
+        
+        return t5
+
+
+
+
+
 def readTokens(filepath):
     f = open(filepath, 'r')
     z0 = f.read()
@@ -370,7 +557,6 @@ def readTokens(filepath):
     z1 = z0.split(', ')
     z2 = list(map(lambda z: int(z), z1))
     return z2
-
 
 if __name__ == '__main__':
 
@@ -398,14 +584,16 @@ if __name__ == '__main__':
     #txtTokens = readTokens('./trainTokensPROTO.txt')
     #txtTokens2 = readTokens('./trainTokens0.txt')
     #txtTokens2 = readTokens('./trainTokens1.txt')
-    txtTokens2 = readTokens('./trainTokens2small.txt')
-    #txtTokens2 = readTokens('./outTokens0.txt')
+    #txtTokens2 = readTokens('./trainTokens2small.txt')
+    txtTokens2 = readTokens('./outTokens0.txt')
     txtTokens = txtTokens + txtTokens2
     #print(txtTokens) # DBG
     #r = r + 1
 
 
-    nn0 = Nn0(dk=dk, nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim)
+    #nn0 = Nn0(dk=dk, nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim)
+    #nn0 = Nn1(nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim) # archives up to 0.18 for wikipedia article terrorism
+    nn0 = Nn2(nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim) # archives up to 0.18 for wikipedia article terrorism
 
 
     print(list(nn0.parameters()))
@@ -445,64 +633,73 @@ if __name__ == '__main__':
 
     bestRatio = 0.0 # best ratio - used for deciding when to store checkpoint
 
-    for iStep in range(int(len(txtTokens)*200.0)): # 
-        selStartIdx = random.randrange(2**20) % (len(txtTokens)-ctxLen)
+    nMicrobatch = 8 # size of microbatch
 
-        slice0 = txtTokens[selStartIdx:selStartIdx+ctxLen] # compute slice of tokens
+
+    for iStep in range(int(len(txtTokens)*200.0/nMicrobatch)): # 
         
-        if True:
-            t0 = nn0.inputEmbeddings(torch.tensor(slice0)) # lookup embeddings
-        else: # old embedding crap
-            t0 = list(map(lambda z : tokensVal[z], slice0)) # look up embeddings by tokens
+        optimizer.zero_grad() # reset gradients
 
-        #print(x)
-        #xxxx
+        for ibatchIdx in range(nMicrobatch):
+            selStartIdx = random.randrange(2**20) % (len(txtTokens)-ctxLen)
+
+            slice0 = txtTokens[selStartIdx:selStartIdx+ctxLen] # compute slice of tokens
             
-        embeddings = []
-        for iIdx in range(positionalEncodings.shape[0]):
-            embeddingWithPositionalEncoding = positionalEncodings[iIdx]*t0[iIdx] # multiply embedding with positional encoding
-            embeddings.append(embeddingWithPositionalEncoding)
+            if True:
+                t0 = nn0.inputEmbeddings(torch.tensor(slice0)) # lookup embeddings
+            else: # old embedding crap
+                t0 = list(map(lambda z : tokensVal[z], slice0)) # look up embeddings by tokens
 
-        x = torch.stack(embeddings, dim=0) # convert list with vectors to matrix
-        x = torch.transpose(x, 0, 1)
+            #print(x)
+            #xxxx
+                
+            embeddings = []
+            for iIdx in range(positionalEncodings.shape[0]):
+                embeddingWithPositionalEncoding = positionalEncodings[iIdx]*t0[iIdx] # multiply embedding with positional encoding
+                embeddings.append(embeddingWithPositionalEncoding)
+
+            x = torch.stack(embeddings, dim=0) # convert list with vectors to matrix
+            x = torch.transpose(x, 0, 1)
+                
+
+
+            #print(x)
+            #print(x.shape)
             
+            
+            yToken = txtTokens[selStartIdx+ctxLen] # token to be predicted
+            #print(yToken) # DBG
+            #y = tokensVal[yToken] # embedding of token to be predicted
+            #print(y) # DBG
+            y = torch.zeros((nTokens))
+            y[yToken] = 1.0
+            
+            
+            
+            
+            
+            
+            pred = nn0(x)
+            #print(f'{pred} <<< pred') # DBG
+            
+            #print(pred.shape)
+            #print(y.shape)
+            #gkgkkg = kgtkjgjkf
+            
+            topkRes = torch.topk(pred, 1)
+            yTokenIdx = topkRes.indices[0].item()
+            if yToken == yTokenIdx:
+                correctPredictions+=1
+            else:
+                wrongPredictions+=1
+            
+            loss = lossFn(pred, y) # compute loss
+            loss = loss / nMicrobatch # see https://stackoverflow.com/questions/62067400/understanding-accumulated-gradients-in-pytorch
+        
+            loss.backward()
 
-
-        #print(x)
-        #print(x.shape)
+            nn0.copyAfterBackward()
         
-        
-        yToken = txtTokens[selStartIdx+ctxLen] # token to be predicted
-        #print(yToken) # DBG
-        #y = tokensVal[yToken] # embedding of token to be predicted
-        #print(y) # DBG
-        y = torch.zeros((nTokens))
-        y[yToken] = 1.0
-        
-        
-        
-        
-        
-        
-        pred = nn0(x)
-        #print(f'{pred} <<< pred') # DBG
-        
-        #print(pred.shape)
-        #print(y.shape)
-        #gkgkkg = kgtkjgjkf
-        
-        topkRes = torch.topk(pred, 1)
-        yTokenIdx = topkRes.indices[0].item()
-        if yToken == yTokenIdx:
-            correctPredictions+=1
-        else:
-            wrongPredictions+=1
-        
-        loss = lossFn(pred, y) # compute loss
-
-        # Backpropagation
-        optimizer.zero_grad()
-        loss.backward()
         optimizer.step()
         
         lossVal = loss.item()
