@@ -757,7 +757,8 @@ if __name__ == '__main__':
             
         timeEnd = time.time()
         timeDelta = timeEnd - timeStart
-        print(f'dt={timeDelta}')
+        if True: # debug speed?
+            print(f'dt={timeDelta}')
 
         
         optimizer.step()
