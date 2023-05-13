@@ -418,8 +418,9 @@ class Nn1(torch.nn.Module):
 #
 class Nn2(torch.nn.Module):
     # /param dk dimension of queries and keys
-    def __init__(self, nTokens, ctxLen, embeddingDim):
+    def __init__(self, device, nTokens, ctxLen, embeddingDim):
         super(Nn2, self).__init__()
+        self.device = device # remember on which device we are
 
 
         self.dim = 128 # 32 # dimensionality of hyena matrices
@@ -435,8 +436,8 @@ class Nn2(torch.nn.Module):
 
 
         # learned window parameters
-        self.a = torch.nn.Parameter(torch.randn(self.dim))
-        self.b = torch.nn.Parameter(torch.randn(self.dim))
+        self.a = torch.nn.Parameter(torch.randn(self.dim)).to(self.device)
+        self.b = torch.nn.Parameter(torch.randn(self.dim)).to(self.device)
 
 
         self.updateA()
@@ -444,8 +445,8 @@ class Nn2(torch.nn.Module):
 
         #self.s1 = torch.tril( torch.ones((32,32,)) )
 
-        self.d1 = torch.diag( torch.randn(self.dim) ) * 0.05
-        self.d2 = torch.diag( torch.randn(self.dim) ) * 0.05
+        self.d1 = (torch.diag( torch.randn(self.dim) ) * 0.05) .to(self.device)
+        self.d2 = (torch.diag( torch.randn(self.dim) ) * 0.05) .to(self.device)
 
         
         self.convYtoLowerDim = torch.nn.Parameter(torch.rand((self.dim,80,))*0.5*(1.0/(self.dim)))
@@ -457,6 +458,7 @@ class Nn2(torch.nn.Module):
         self.contextVecToProbabilityVecBias = torch.nn.Parameter(torch.rand((nTokens))*0.005)
         
         self.inputEmbeddings = torch.nn.Embedding(nTokens, embeddingDim)
+        #self.inputEmbeddings = self.inputEmbeddings.to(device) # is this necessary?
     
     # copy values after .backward()
     def updateA(self):
@@ -464,7 +466,7 @@ class Nn2(torch.nn.Module):
         filterWindowDecay = 0.3
         filterWindowBias = 0.0005
         # compute filter
-        filter_ = torch.tensor([exp(-z*filterWindowDecay)*(1.0-filterWindowBias)+filterWindowBias for z in range(self.dim)])
+        filter_ = torch.tensor([exp(-z*filterWindowDecay)*(1.0-filterWindowBias)+filterWindowBias for z in range(self.dim)]).to(self.device)
         #print(filter_)
 
 
@@ -482,15 +484,11 @@ class Nn2(torch.nn.Module):
             return s1
 
         tWindow = torch.multiply(self.a, filter_)
-        self.s1 = makeToeplitzKernel(tWindow)
+        #print(tWindow.device)
+        self.s1 = makeToeplitzKernel(tWindow.to('cpu')).to(self.device)
 
         tWindow = torch.multiply(self.b, filter_)
-        self.s2 = makeToeplitzKernel(tWindow)
-
-
-        # FIXME< don't copy, retain graph until last iteration! >
-        #self.s1 = self.s1.clone().detach()
-        pass
+        self.s2 = makeToeplitzKernel(tWindow.to('cpu')).to(self.device)
 
     def forward(self, x):
         t0 = torch.reshape(x, (-1,)) # convert to one dimensional matrix
@@ -523,7 +521,6 @@ class Nn2(torch.nn.Module):
 
 
 
-
         h1 = self.s1 @ self.d1 # compute hyena matrix
 
         if h1.shape != (self.dim, self.dim, ):  # must be matrix!
@@ -536,7 +533,8 @@ class Nn2(torch.nn.Module):
 
         #z2 = x1 @ transpose2(h1 @ z1)
         #z2 = transpose2(h1 @ z1) @ x1
-
+        
+        
         t50 = h1 @ z1
         z2 = torch.multiply(x1, t50)
         #print(f'{t50.shape} t50')
@@ -605,7 +603,11 @@ def readTokens(filepath):
     z2 = list(map(lambda z: int(z), z1))
     return z2
 
+import time
+
 if __name__ == '__main__':
+
+    device = 'cuda' # 'cpu'
 
 
     ctxLen = 30 #24 #10 # length of the context
@@ -630,9 +632,9 @@ if __name__ == '__main__':
     txtTokens = [0] * (ctxLen-1) # fill up with zero for being able to make sense of the beginning
     #txtTokens = readTokens('./trainTokensPROTO.txt')
     #txtTokens2 = readTokens('./trainTokens0.txt')
-    #txtTokens2 = readTokens('./trainTokens1.txt')
+    txtTokens2 = readTokens('./trainTokens1.txt')
     #txtTokens2 = readTokens('./trainTokens2small.txt')
-    txtTokens2 = readTokens('./outTokens0.txt')
+    #txtTokens2 = readTokens('./outTokens0.txt')
     txtTokens = txtTokens + txtTokens2
     #print(txtTokens) # DBG
     #r = r + 1
@@ -640,9 +642,10 @@ if __name__ == '__main__':
 
     #nn0 = Nn0(dk=dk, nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim)
     #nn0 = Nn1(nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim) # archives up to 0.18 for wikipedia article terrorism
-    nn0 = Nn2(nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim) # archives up to 0.18 for wikipedia article terrorism
-
-
+    nn0 = Nn2(device=device, nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim) # archives up to 0.18 for wikipedia article terrorism
+    nn0 = nn0.to(device)
+    
+    
     print(list(nn0.parameters()))
 
     # see https://stackoverflow.com/questions/49201236/check-the-total-number-of-parameters-in-a-pytorch-model
@@ -653,6 +656,7 @@ if __name__ == '__main__':
     #tokensVal = torch.rand((nTokens, embeddingDim)) # matrix with values of tokens
 
     positionalEncodings = calcPositionalEncoding(embeddingDim, ctxLen)
+    positionalEncodings = positionalEncodings.to(device)
 
 
 
@@ -687,13 +691,18 @@ if __name__ == '__main__':
         
         optimizer.zero_grad() # reset gradients
 
+        timeStart = time.time()
+        
         for ibatchIdx in range(nMicrobatch):
+
+            
+            
             selStartIdx = random.randrange(2**20) % (len(txtTokens)-ctxLen)
 
             slice0 = txtTokens[selStartIdx:selStartIdx+ctxLen] # compute slice of tokens
             
             if True:
-                t0 = nn0.inputEmbeddings(torch.tensor(slice0)) # lookup embeddings
+                t0 = nn0.inputEmbeddings(torch.tensor(slice0).to(device)) # lookup embeddings
             else: # old embedding crap
                 t0 = list(map(lambda z : tokensVal[z], slice0)) # look up embeddings by tokens
 
@@ -702,7 +711,7 @@ if __name__ == '__main__':
                 
             embeddings = []
             for iIdx in range(positionalEncodings.shape[0]):
-                embeddingWithPositionalEncoding = positionalEncodings[iIdx]*t0[iIdx] # multiply embedding with positional encoding
+                embeddingWithPositionalEncoding = (positionalEncodings[iIdx]*t0[iIdx]) # multiply embedding with positional encoding
                 embeddings.append(embeddingWithPositionalEncoding)
 
             x = torch.stack(embeddings, dim=0) # convert list with vectors to matrix
@@ -721,10 +730,8 @@ if __name__ == '__main__':
             y = torch.zeros((nTokens))
             y[yToken] = 1.0
             
-            
-            
-            
-            
+            y = y.to(device)
+            x = x.to(device)
             
             pred = nn0(x)
             #print(f'{pred} <<< pred') # DBG
@@ -747,13 +754,17 @@ if __name__ == '__main__':
             loss.backward(retain_graph=(ibatchIdx!=(nMicrobatch-1)))
 
             #nn0.copyAfterBackward()
+            
+        timeEnd = time.time()
+        timeDelta = timeEnd - timeStart
+        print(f'dt={timeDelta}')
+
         
         optimizer.step()
 
         nn0.updateA()
 
 
-        #print(f'{nn0.a}')
         
         lossVal = loss.item()
         
