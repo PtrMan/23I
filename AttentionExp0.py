@@ -636,9 +636,9 @@ if __name__ == '__main__':
     txtTokens = [0] * (ctxLen-1) # fill up with zero for being able to make sense of the beginning
     #txtTokens = readTokens('./trainTokensPROTO.txt')
     #txtTokens2 = readTokens('./trainTokens0.txt')
-    txtTokens2 = readTokens('./trainTokens1.txt')
+    #txtTokens2 = readTokens('./trainTokens1.txt')
     #txtTokens2 = readTokens('./trainTokens2small.txt')
-    #txtTokens2 = readTokens('./outTokens0.txt')
+    txtTokens2 = readTokens('./outTokens0.txt')
     txtTokens = txtTokens + txtTokens2
     #print(txtTokens) # DBG
     #r = r + 1
@@ -690,6 +690,8 @@ if __name__ == '__main__':
 
     nMicrobatch = 8 # size of microbatch
 
+    
+    timeLastReport = time.time()
 
     for iStep in range(int(len(txtTokens)*200.0/nMicrobatch)): # 
         
@@ -799,6 +801,12 @@ if __name__ == '__main__':
             
             
             print(f'correctPredictions={correctPredictions} wrongPredictions={wrongPredictions} correctPredRatio={currentPredRatio:>4f}')
+            
+            
+            # timing
+            timeThisReport = time.time()
+            print(f'dt={timeThisReport-timeLastReport}')
+            timeLastReport = timeThisReport
             
             # reset counters
             correctPredictions = 0
