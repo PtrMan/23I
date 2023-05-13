@@ -620,10 +620,14 @@ if __name__ == '__main__':
 
     parser.add_argument('filename') # positional argument
     parser.add_argument('--epochs')
+    parser.add_argument('--device')
+    parser.add_argument('--restore', action='store_true', help='restore from checkpoint')
+
 
     args = parser.parse_args()
 
-    device = 'cuda' # 'cpu'
+    #device = 'cuda' # 'cpu'
+    device = args.device
 
 
     ctxLen = 30 #24 #10 # length of the context
@@ -656,11 +660,14 @@ if __name__ == '__main__':
     #print(txtTokens) # DBG
     #r = r + 1
 
-
-    #nn0 = Nn0(dk=dk, nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim)
-    #nn0 = Nn1(nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim) # archives up to 0.18 for wikipedia article terrorism
-    nn0 = Nn2(device=device, nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim) # archives up to 0.18 for wikipedia article terrorism
-    nn0 = nn0.to(device)
+    nn0 = None
+    if args.restore:
+        nn0 = torch.load('./models/model-snapshot.pth')
+    else:
+        #nn0 = Nn0(dk=dk, nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim)
+        #nn0 = Nn1(nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim) # archives up to 0.18 for wikipedia article terrorism
+        nn0 = Nn2(device=device, nTokens=nTokens, ctxLen=ctxLen, embeddingDim=embeddingDim) # archives up to 0.18 for wikipedia article terrorism
+        nn0 = nn0.to(device)
     
     
     print(list(nn0.parameters()))
@@ -842,7 +849,7 @@ if __name__ == '__main__':
     torch.save(nn0, './models/model.pth')
 
 # run with
-# python a.py --epochs=200.0 ./outTokens0.txt
+# python a.py --device=cpu --epochs=200.0 ./outTokens0.txt
 
 
 # THIS IS THE LATEST VERSION
