@@ -522,9 +522,10 @@ class Nn2(torch.nn.Module):
 
 
         h1 = self.s1 @ self.d1 # compute hyena matrix
-
-        if h1.shape != (self.dim, self.dim, ):  # must be matrix!
-            fkfkddokkodfokdf
+        
+        # ASSERTION
+        #if h1.shape != (self.dim, self.dim, ):  # must be matrix!
+        #    fkfkddokkodfokdf
         
         #print('+++')
         #print(f'{x1.shape} x1')
@@ -543,8 +544,9 @@ class Nn2(torch.nn.Module):
 
         #print(f'{z2.shape} z2')
 
-        if z2.shape != (self.dim, 1, ):
-            fkfkddokkodfokdf
+        # ASSERTION
+        #if z2.shape != (self.dim, 1, ):
+        #    fkfkddokkodfokdf
         
         #okgokgkogkogokkgo
 
@@ -553,18 +555,20 @@ class Nn2(torch.nn.Module):
 
 
         h2 = self.s2 @ self.d2 # compute hyena matrix
-
-        if h2.shape != (self.dim, self.dim, ):  # must be matrix!
-            fkfkddokkodfokdf
+        
+        # ASSERTION
+        #if h2.shape != (self.dim, self.dim, ):  # must be matrix!
+        #    fkfkddokkodfokdf
 
         #print(f'{z2.shape} z2')
 
         #z3 = x2 @ transpose2(h2 @ z2) 
         t50 = h2 @ z2
         z3 = torch.multiply(x2, t50)
-
-        if z3.shape != (self.dim, 1, ):
-            fkfkddokkodfokdf
+        
+        # ASSERTION
+        #if z3.shape != (self.dim, 1, ):
+        #    fkfkddokkodfokdf
 
 
 
@@ -701,22 +705,34 @@ if __name__ == '__main__':
 
             slice0 = txtTokens[selStartIdx:selStartIdx+ctxLen] # compute slice of tokens
             
-            if True:
-                t0 = nn0.inputEmbeddings(torch.tensor(slice0).to(device)) # lookup embeddings
-            else: # old embedding crap
-                t0 = list(map(lambda z : tokensVal[z], slice0)) # look up embeddings by tokens
+            t0 = nn0.inputEmbeddings(torch.tensor(slice0).to(device)) # lookup embeddings
+            
+            #print(t0.device)
 
             #print(x)
             #xxxx
-                
+            
+            x2 = positionalEncodings*t0
+            #print(x2.shape)
+            
+            """ old crappy calculation
             embeddings = []
             for iIdx in range(positionalEncodings.shape[0]):
                 embeddingWithPositionalEncoding = (positionalEncodings[iIdx]*t0[iIdx]) # multiply embedding with positional encoding
                 embeddings.append(embeddingWithPositionalEncoding)
 
             x = torch.stack(embeddings, dim=0) # convert list with vectors to matrix
+            
+            print(x.shape)
+            """
+            
+            x = x2
+            
             x = torch.transpose(x, 0, 1)
-                
+            
+            
+            
+            #xxxokkofkofkokfo
 
 
             #print(x)
@@ -757,7 +773,7 @@ if __name__ == '__main__':
             
         timeEnd = time.time()
         timeDelta = timeEnd - timeStart
-        if True: # debug speed?
+        if False: # debug speed?
             print(f'dt={timeDelta}')
 
         
@@ -773,7 +789,7 @@ if __name__ == '__main__':
             avgLoss = lossVal
         avgLoss = avgLoss * (1.0 - 0.001) + lossVal * 0.001
 
-        if iStep % 2500 == 0:
+        if iStep % int(2500/nMicrobatch) == 0:
             lossVal, current = loss.item(), (iStep + 1) * len(x)
             epoch = float(iStep) / len(txtTokens) # compute current epoch
             print(f"loss={lossVal:>7f}  avgLoss={avgLoss:>7f}   [epoch={epoch:>4f}]")
