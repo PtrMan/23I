@@ -35,6 +35,15 @@ def matConv1dTo2d(v):
     return v.unsqueeze(0)
 
 
+# build Toeplitz kernel matrix by values (take values from vector)
+def makeToeplitzKernel(tWindow):
+    shapeDim = tWindow.shape[0]
+    s1 = torch.zeros((shapeDim,shapeDim,))
+    for iIdx in range(shapeDim):
+        s1 = s1 + torch.diag( torch.ones(shapeDim-iIdx)*tWindow[iIdx], -iIdx )
+    return s1
+
+
 # module for self-attention
 class SelfAttentionLayer(torch.nn.Module):
     def __init__(self, ctxLen, dk):
@@ -475,13 +484,6 @@ class Nn2(torch.nn.Module):
         #print(tWindow)
 
 
-        # build Toeplitz kernel matrix by values (take values from vector)
-        def makeToeplitzKernel(tWindow):
-            shapeDim = tWindow.shape[0]
-            s1 = torch.zeros((shapeDim,shapeDim,))
-            for iIdx in range(shapeDim):
-                s1 = s1 + torch.diag( torch.ones(shapeDim-iIdx)*tWindow[iIdx], -iIdx )
-            return s1
 
         tWindow = torch.multiply(self.a, filter_)
         #print(tWindow.device)
@@ -607,9 +609,19 @@ def readTokens(filepath):
     z2 = list(map(lambda z: int(z), z1))
     return z2
 
-import time
+
 
 if __name__ == '__main__':
+
+    import time
+    import argparse
+
+    parser = argparse.ArgumentParser(prog='a', description='train ML model')
+
+    parser.add_argument('filename') # positional argument
+    parser.add_argument('--epochs')
+
+    args = parser.parse_args()
 
     device = 'cuda' # 'cpu'
 
@@ -638,7 +650,8 @@ if __name__ == '__main__':
     #txtTokens2 = readTokens('./trainTokens0.txt')
     #txtTokens2 = readTokens('./trainTokens1.txt')
     #txtTokens2 = readTokens('./trainTokens2small.txt')
-    txtTokens2 = readTokens('./outTokens0.txt')
+    #txtTokens2 = readTokens('./outTokens0.txt')
+    txtTokens2 = readTokens(args.filename)
     txtTokens = txtTokens + txtTokens2
     #print(txtTokens) # DBG
     #r = r + 1
@@ -693,7 +706,7 @@ if __name__ == '__main__':
     
     timeLastReport = time.time()
 
-    for iStep in range(int(len(txtTokens)*200.0/nMicrobatch)): # 
+    for iStep in range(int(len(txtTokens)*float(args.epochs)/nMicrobatch)): # 
         
         optimizer.zero_grad() # reset gradients
 
@@ -827,3 +840,9 @@ if __name__ == '__main__':
 
     # store model together with architecture
     torch.save(nn0, './models/model.pth')
+
+# run with
+# python a.py --epochs=200.0 ./outTokens0.txt
+
+
+# THIS IS THE LATEST VERSION
