@@ -416,32 +416,39 @@ class Nn1(torch.nn.Module):
 
 # experimental NN attempting to implement hyena hierachy
 #
-# TODO< math isn't correct because it doesn't follow the hyena algorithm as described in the paper! >
 class Nn2(torch.nn.Module):
     # /param dk dimension of queries and keys
     def __init__(self, nTokens, ctxLen, embeddingDim):
         super(Nn2, self).__init__()
 
+
+        self.dim = 128 # 32 # dimensionality of hyena matrices
+
+
         # random projection matrices
         inputDim = ctxLen*embeddingDim
-        self.proj0 = torch.nn.Parameter(torch.rand((inputDim,32,))*0.05, requires_grad=False) # not learned
-        self.proj1 = torch.nn.Parameter(torch.rand((inputDim,32,))*0.05, requires_grad=False) # not learned
+        self.proj0 = torch.nn.Parameter(torch.rand((inputDim,self.dim,))*0.05, requires_grad=False) # not learned
+        self.proj1 = torch.nn.Parameter(torch.rand((inputDim,self.dim,))*0.05, requires_grad=False) # not learned
+        self.proj2 = torch.nn.Parameter(torch.rand((inputDim,self.dim,))*0.05, requires_grad=False) # not learned
 
 
 
 
         # learned window parameters
-        self.a = torch.nn.Parameter(torch.randn(32))
+        self.a = torch.nn.Parameter(torch.randn(self.dim))
+        self.b = torch.nn.Parameter(torch.randn(self.dim))
+
 
         self.updateA()
         #print(a)
 
         #self.s1 = torch.tril( torch.ones((32,32,)) )
 
-        self.d1 = torch.diag( torch.randn(32) ) * 0.05
+        self.d1 = torch.diag( torch.randn(self.dim) ) * 0.05
+        self.d2 = torch.diag( torch.randn(self.dim) ) * 0.05
 
         
-        self.convYtoLowerDim = torch.nn.Parameter(torch.rand((32*32,80,))*0.5*(1.0/(32*32)))
+        self.convYtoLowerDim = torch.nn.Parameter(torch.rand((self.dim,80,))*0.5*(1.0/(self.dim)))
 
         # weights for context vector to probability vector
         #self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((embeddingDim,nTokens,))*0.05)
@@ -457,23 +464,30 @@ class Nn2(torch.nn.Module):
         filterWindowDecay = 0.3
         filterWindowBias = 0.0005
         # compute filter
-        filter_ = torch.tensor([exp(-z*filterWindowDecay)*(1.0-filterWindowBias)+filterWindowBias for z in range(32)])
+        filter_ = torch.tensor([exp(-z*filterWindowDecay)*(1.0-filterWindowBias)+filterWindowBias for z in range(self.dim)])
         #print(filter_)
 
 
-        tWindow = torch.multiply(self.a, filter_)
+        #tWindow = torch.multiply(self.a, filter_)
 
         #print(tWindow)
 
 
         # build Toeplitz kernel matrix by values (take values from vector)
-        shapeDim = tWindow.shape[0]
-        s1 = torch.zeros((shapeDim,shapeDim,))
-        for iIdx in range(shapeDim):
-            s1 = s1 + torch.diag( torch.ones(shapeDim-iIdx)*tWindow[iIdx], -iIdx )
+        def makeToeplitzKernel(tWindow):
+            shapeDim = tWindow.shape[0]
+            s1 = torch.zeros((shapeDim,shapeDim,))
+            for iIdx in range(shapeDim):
+                s1 = s1 + torch.diag( torch.ones(shapeDim-iIdx)*tWindow[iIdx], -iIdx )
+            return s1
 
-        self.s1 = s1
-        
+        tWindow = torch.multiply(self.a, filter_)
+        self.s1 = makeToeplitzKernel(tWindow)
+
+        tWindow = torch.multiply(self.b, filter_)
+        self.s2 = makeToeplitzKernel(tWindow)
+
+
         # FIXME< don't copy, retain graph until last iteration! >
         #self.s1 = self.s1.clone().detach()
         pass
@@ -495,6 +509,8 @@ class Nn2(torch.nn.Module):
         v = transpose2(t0 @ self.proj0)
         x1 = transpose2(t0 @ self.proj1)
 
+        x2 = transpose2(t0 @ self.proj2)
+
         #print(f'{v.shape} v')
         #print(f'{x1.shape} x1')
         #gkogogkogko
@@ -505,33 +521,57 @@ class Nn2(torch.nn.Module):
 
         #print(f'{x1.shape} A')
 
+
+
+
         h1 = self.s1 @ self.d1 # compute hyena matrix
 
-        if h1.shape != (32, 32, ):  # must be matrix!
+        if h1.shape != (self.dim, self.dim, ):  # must be matrix!
             fkfkddokkodfokdf
-
-        #print(f'{t5.shape} t5')
-
-        #print(f'{z1.shape} z1')
-        #print(f'{h1.shape} h1')
-
-        #t6 = (h0 @ t5)
-        t6 = h1 @ z1
-        #t6 = (z1 @ h1)
-        #print(f'{t6.shape} C')
-
+        
+        #print('+++')
         #print(f'{x1.shape} x1')
-        #print(f'{t6.shape} t6')
+        #print(f'{h1.shape} h1')
+        #print(f'{z1.shape} z1')
 
-        z2 = x1 @ transpose2(t6)
+        #z2 = x1 @ transpose2(h1 @ z1)
+        #z2 = transpose2(h1 @ z1) @ x1
+
+        t50 = h1 @ z1
+        z2 = torch.multiply(x1, t50)
+        #print(f'{t50.shape} t50')
+
+        #print('=')
 
         #print(f'{z2.shape} z2')
 
-        if z2.shape != (32, 32, ): # must be matrix!
+        if z2.shape != (self.dim, 1, ):
+            fkfkddokkodfokdf
+        
+        #okgokgkogkogokkgo
+
+
+
+
+
+        h2 = self.s2 @ self.d2 # compute hyena matrix
+
+        if h2.shape != (self.dim, self.dim, ):  # must be matrix!
+            fkfkddokkodfokdf
+
+        #print(f'{z2.shape} z2')
+
+        #z3 = x2 @ transpose2(h2 @ z2) 
+        t50 = h2 @ z2
+        z3 = torch.multiply(x2, t50)
+
+        if z3.shape != (self.dim, 1, ):
             fkfkddokkodfokdf
 
 
-        y = z2
+
+        #y = z2
+        y = z3
         y = torch.reshape(y, (-1,)) # convert to one dimensional matrix
         
         
