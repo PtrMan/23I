@@ -3,6 +3,12 @@ import numpy
 from math import sqrt, exp
 import random
 
+def assert2(v, msg):
+    if not v:
+        print(f'assert failed! msg={msg}')
+        raise Exception(msg)
+
+
 
 # implementation of position encoding
 
@@ -35,6 +41,8 @@ def matConv1dTo2d(v):
     return v.unsqueeze(0)
 
 
+# DEPRECATED
+"""
 # build Toeplitz kernel matrix by values (take values from vector)
 def makeToeplitzKernel(tWindow):
     shapeDim = tWindow.shape[0]
@@ -42,6 +50,20 @@ def makeToeplitzKernel(tWindow):
     for iIdx in range(shapeDim):
         s1 = s1 + torch.diag( torch.ones(shapeDim-iIdx)*tWindow[iIdx], -iIdx )
     return s1
+"""
+
+
+# build Toeplitz kernel matrix by values (take values from vector)
+# the result matrix doesn't necessarily have to be a square matrix!
+# /param X is the other dimension
+def makeToeplitzKernel2(tWindow, D):
+    L = tWindow.shape[0]
+    z = torch.zeros((L,D,))
+    for iIdx in range(L):
+        z0 = torch.diag( torch.ones(L-iIdx)*tWindow[iIdx], -iIdx ) # create diagonal matrix
+        z1 = z0[0:L, 0:D] # cut of the part we need for the final result
+        z = z + z1
+    return z
 
 
 # module for self-attention
@@ -431,16 +453,28 @@ class Nn2(torch.nn.Module):
         super(Nn2, self).__init__()
         self.device = device # remember on which device we are
 
-
+        # TODO< rename to self.L > # sequence length seqLen
         self.dim = 128 # 32 # dimensionality of hyena matrices
 
+        self.D = 6 # dimensionalty of non-linear output vector of hyena hierachy, can be any number
+        self.N = 1 # order of the hyena hierachy   =   depth of non-linear calculation
 
         # random projection matrices
         inputDim = ctxLen*embeddingDim
-        self.proj0 = torch.nn.Parameter(torch.rand((inputDim,self.dim,))*0.05, requires_grad=False) # not learned
-        self.proj1 = torch.nn.Parameter(torch.rand((inputDim,self.dim,))*0.05, requires_grad=False) # not learned
-        self.proj2 = torch.nn.Parameter(torch.rand((inputDim,self.dim,))*0.05, requires_grad=False) # not learned
+        #self.proj0 = torch.nn.Parameter(torch.rand((inputDim,self.dim,))*0.05, requires_grad=False) # not learned
+        #self.proj1 = torch.nn.Parameter(torch.rand((inputDim,self.dim,))*0.05, requires_grad=False) # not learned
+        #self.proj2 = torch.nn.Parameter(torch.rand((inputDim,self.dim,))*0.05, requires_grad=False) # not learned
 
+        self.projForX = [] # projection matrices for computing "x"
+        for it in range(2):
+            temp0 = torch.nn.Parameter(torch.rand((inputDim,1*self.D,))*0.05, requires_grad=False) # not learned
+            self.projForX.append(temp0)
+        
+        self.projForV = torch.nn.Parameter(torch.rand((inputDim,self.dim*self.D,))*0.05, requires_grad=False) # not learned # projection matrix for computing "z"
+
+
+
+        self.sArr = []
 
 
 
@@ -454,8 +488,14 @@ class Nn2(torch.nn.Module):
 
         #self.s1 = torch.tril( torch.ones((32,32,)) )
 
-        self.d1 = (torch.diag( torch.randn(self.dim) ) * 0.05) .to(self.device)
-        self.d2 = (torch.diag( torch.randn(self.dim) ) * 0.05) .to(self.device)
+        # diagonal matrices
+        #self.d1 = (torch.diag( torch.randn(self.dim) ) * 0.05) .to(self.device)
+        #self.d2 = (torch.diag( torch.randn(self.dim) ) * 0.05) .to(self.device)
+
+        self.dArr = []
+        for i in range(2):
+            d = (torch.diag( torch.randn(self.dim) ) * 0.05) .to(self.device)
+            self.dArr.append(d)
 
         
         self.convYtoLowerDim = torch.nn.Parameter(torch.rand((self.dim,80,))*0.5*(1.0/(self.dim)))
@@ -463,9 +503,14 @@ class Nn2(torch.nn.Module):
         # weights for context vector to probability vector
         #self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((embeddingDim,nTokens,))*0.05)
         #self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((layer0NonlinearDim,nTokens,))*0.05)
-        self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((80,nTokens,))*0.5*(1.0/80))
+        
+        #self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((80,nTokens,))*0.5*(1.0/80))
+        #self.contextVecToProbabilityVecBias = torch.nn.Parameter(torch.rand((nTokens))*0.005)
+        
+        self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((self.D, nTokens,))*0.5*(1.0/80))
         self.contextVecToProbabilityVecBias = torch.nn.Parameter(torch.rand((nTokens))*0.005)
         
+
         self.inputEmbeddings = torch.nn.Embedding(nTokens, embeddingDim)
         #self.inputEmbeddings = self.inputEmbeddings.to(device) # is this necessary?
     
@@ -484,27 +529,128 @@ class Nn2(torch.nn.Module):
         #print(tWindow)
 
 
+        self.sArr = []
+
 
         tWindow = torch.multiply(self.a, filter_)
         #print(tWindow.device)
-        self.s1 = makeToeplitzKernel(tWindow.to('cpu')).to(self.device)
+        #self.s1 = makeToeplitzKernel(tWindow.to('cpu')).to(self.device)
+
+        s = makeToeplitzKernel2(tWindow.to('cpu'), self.D).to(self.device)
+        self.sArr.append(s)
+
+
 
         tWindow = torch.multiply(self.b, filter_)
-        self.s2 = makeToeplitzKernel(tWindow.to('cpu')).to(self.device)
+        #self.s2 = makeToeplitzKernel(tWindow.to('cpu')).to(self.device)
 
-    def forward(self, x):
-        t0 = torch.reshape(x, (-1,)) # convert to one dimensional matrix
+        s = makeToeplitzKernel2(tWindow.to('cpu'), self.D).to(self.device)
+        self.sArr.append(s)
+
+
+    def forward(self, xIn):
+        t0 = torch.reshape(xIn, (-1,)) # convert to one dimensional matrix
         #print(f'{t0.shape} t0')
         t0 = matConv1dTo2d(t0)
-        #print(f'{t0.shape} t0')
+        #print(t0.shape, 't0.shape')
 
 
-        #print('///')
-        #print(t0.shape)
-        #print(self.proj0.shape)
-        #print('+++')
+        # * paper algorithm "Algorithm 1: Projection"
+        xArr = []
+        v = None
+        if True: # codeblock
+
+            # FIXME< is hacky and not according to paper! >
+
+            zArr = []
+            for it in range(2):
+                temp0 = t0 @ self.projForX[it]
+
+                # NOTNECESSARY< it is not necessary for now to reshape matrix temp0 into matrix with right dimensions >
+
+                zArr.append(temp0)
+            
+            temp0 = t0 @ self.projForV
+            temp0 = torch.reshape(temp0, (self.D, self.dim,)) # reshape so it has the right shape
+            #print(temp0.shape, 'temp0.shape')
+            zArr.append(temp0) # NOTE< just append to array >
+
+            # paper: reshape and split into x_1 ... x_N and z
+            xArr = zArr[:-1]
+            v = zArr[-1]
 
 
+
+        # * paper algorithm "Algorithm 3: Forward pass of Hyena"
+        if True: # codeblock
+
+            #xArr = []
+            #xArr.append(torch.randn((self.N, self.D, )))
+            #xArr.append(torch.randn((self.N, self.D, )))
+
+            hArr = [] # array for hyena matrices
+            #h.append(torch.randn((self.D  , self.dim, ))*0.05)
+            #h.append(torch.randn((self.D  , self.dim, ))*0.05)
+            
+            # calculate "h" hyena matrix from diagonal matrix "d"  and  Toeplitz matrix "s"
+            for idx in range(len(self.sArr)):
+                temp0 = self.dArr[idx] @ self.sArr[idx]
+                temp0 = transpose2(temp0) # HACKY correction, this doesn't change the math
+                hArr.append(temp0)
+
+            #v = torch.randn((self.D, self.dim, ))*0.05
+
+            # self.D is the model width
+            # self.N is the order of the hyena filter
+
+            # see "Algorithm 3" in the Hyena paper
+            for n in range(1,self.N+1):
+                t = []
+                for i_t in range(self.D):
+                    #print(f'it i_t={i_t}') # DBG
+
+                    #print(f'{n} {i_t}') # DBG
+                    
+                    #print(h[n-1][i_t], 'h[]')
+                    tempV = transpose2(matConv1dTo2d(v[i_t]))
+                    #print(tempV, 'v')
+                    #fkokofkofokfokfko # OK
+                    
+                    #print(hArr[n-1].shape, 'h[n-1].shape') # DBG
+                    temp1 = hArr[n-1] @ tempV
+                    #print(temp1, 'temp1')
+                    #kfkfkfkfk # OK
+
+
+                    #fkookfkofok # OK
+
+                    tempXarrValue = xArr[n-1]
+                    #print(tempXarrValue.shape, 'x[n-1].shape') # DBG
+                    
+                    #tempX = matConv1dTo2d(tempXarrValue[i_t])
+                    tempX = tempXarrValue
+                    
+                    
+                    #print(tempX, 'x_t_n')
+                    #print(tempX.shape, 'tempX.shape') # DBG
+                    #print(temp1.shape, 'temp1.shape') # DBG
+                    
+                    temp0 = tempX @ temp1 # dot product
+                    #print(temp0, 'temp0')
+                    assert2(temp0.shape == (1,1), 'result of dot product must be scalar value!')
+                    t.append(temp0[0][0].item())
+                
+                #fkofkookodkokdokd
+                v = transpose2(torch.tensor([t])).to(self.device)
+
+            yHyenaHierachy = v
+
+            #print(yHyenaHierachy) # DBG
+            #goodA
+
+
+
+        """
         # project input with (frozen) input projections
         v = transpose2(t0 @ self.proj0)
         x1 = transpose2(t0 @ self.proj1)
@@ -550,8 +696,6 @@ class Nn2(torch.nn.Module):
         #if z2.shape != (self.dim, 1, ):
         #    fkfkddokkodfokdf
         
-        #okgokgkogkogokkgo
-
 
 
 
@@ -578,11 +722,15 @@ class Nn2(torch.nn.Module):
         y = z3
         y = torch.reshape(y, (-1,)) # convert to one dimensional matrix
         
+        """
         
         # do transform from y to y0 to reduce dimensionality and thus parameter count
-        y0 = y @ self.convYtoLowerDim
+        #y0 = y @ self.convYtoLowerDim
 
         
+        y0 = transpose2(yHyenaHierachy)
+
+
         # OUT propbability head
         
         # multiply with matrix to get probabilities
@@ -854,3 +1002,8 @@ if __name__ == '__main__':
 
 
 # THIS IS THE LATEST VERSION
+
+# DONE< compute in STAGINGcode   h hyena matrices from "s" and "d" >
+# TODO< project correctly! >
+
+
