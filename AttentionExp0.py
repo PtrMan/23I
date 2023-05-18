@@ -454,9 +454,9 @@ class Nn2(torch.nn.Module):
         self.device = device # remember on which device we are
 
         # TODO< rename to self.L > # sequence length seqLen
-        self.dim = 128 # 32 # dimensionality of hyena matrices
+        self.dim = 256 # 128 # 32 # dimensionality of hyena matrices
 
-        self.D = 6 # dimensionalty of non-linear output vector of hyena hierachy, can be any number
+        self.D = 29 #19:0.075 #6 # dimensionalty of non-linear output vector of hyena hierachy, can be any number
         self.N = 1 # order of the hyena hierachy   =   depth of non-linear calculation
 
         # random projection matrices
@@ -479,8 +479,8 @@ class Nn2(torch.nn.Module):
 
 
         # learned window parameters
-        self.a = torch.nn.Parameter(torch.randn(self.dim)).to(self.device)
-        self.b = torch.nn.Parameter(torch.randn(self.dim)).to(self.device)
+        self.a = (torch.nn.Parameter(torch.randn(self.dim))*0.05)  .to(self.device)
+        self.b = (torch.nn.Parameter(torch.randn(self.dim))*0.05)  .to(self.device)
 
 
         self.updateA()
@@ -498,7 +498,7 @@ class Nn2(torch.nn.Module):
             self.dArr.append(d)
 
         
-        self.convYtoLowerDim = torch.nn.Parameter(torch.rand((self.dim,80,))*0.5*(1.0/(self.dim)))
+        #self.convYtoLowerDim = torch.nn.Parameter(torch.rand((self.dim,80,))*0.5*(1.0/(self.dim)))
 
         # weights for context vector to probability vector
         #self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((embeddingDim,nTokens,))*0.05)
@@ -778,14 +778,13 @@ if __name__ == '__main__':
     device = args.device
 
 
-    ctxLen = 30 #24 #10 # length of the context
+    ctxLen = 60 #30 #24 #10 # length of the context
     nTokens = 5000 #500 # number of tokens
 
     embeddingDim = 88 # 50 #36 # 24 # 12 # size of the embedding vector
 
 
-    #dk = 3
-    dk = 170 #150 #92 #72 # 66 # 46 # 16 # 8   # dimension of self-attention matrix
+    #dk = 170 #150 #92 #72 # 66 # 46 # 16 # 8 # 3  # dimension of self-attention matrix
 
 
     # tokens to train
@@ -846,7 +845,8 @@ if __name__ == '__main__':
 
 
     #optimizer = torch.optim.SGD(nn0.parameters(), lr=lr)
-    optimizer = torch.optim.Adam(nn0.parameters(), lr=0.0004*0.8) # 0.001 great results      0.005 way to fast
+    #optimizer = torch.optim.Adam(nn0.parameters(), lr=0.0004*0.8) # 0.001 great results      0.005 way to fast
+    optimizer = torch.optim.AdamW(nn0.parameters(), lr=0.0004)
 
     #nSamples = 1 # number of samples in one epoch
 
