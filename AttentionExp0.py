@@ -454,9 +454,9 @@ class Nn2(torch.nn.Module):
         self.device = device # remember on which device we are
 
         # TODO< rename to self.L > # sequence length seqLen
-        self.dim = 256 # 128 # 32 # dimensionality of hyena matrices
+        self.dim = 32 # 128 # 32 # dimensionality of hyena matrices
 
-        self.D = 29 #19:0.075 #6 # dimensionalty of non-linear output vector of hyena hierachy, can be any number
+        self.D = 7 #19
         self.N = 1 # order of the hyena hierachy   =   depth of non-linear calculation
 
         # random projection matrices
@@ -467,10 +467,10 @@ class Nn2(torch.nn.Module):
 
         self.projForX = [] # projection matrices for computing "x"
         for it in range(2):
-            temp0 = torch.nn.Parameter(torch.rand((inputDim,1*self.D,))*0.05, requires_grad=False) # not learned
+            temp0 = torch.nn.Parameter(torch.rand((inputDim,self.D*self.dim,))*0.05, requires_grad=False) # not learned
             self.projForX.append(temp0)
         
-        self.projForV = torch.nn.Parameter(torch.rand((inputDim,self.dim*self.D,))*0.05, requires_grad=False) # not learned # projection matrix for computing "z"
+        self.projForV = torch.nn.Parameter(torch.rand((inputDim,self.D*self.dim,))*0.05, requires_grad=False) # not learned # projection matrix for computing "z"
 
 
 
@@ -507,7 +507,7 @@ class Nn2(torch.nn.Module):
         #self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((80,nTokens,))*0.5*(1.0/80))
         #self.contextVecToProbabilityVecBias = torch.nn.Parameter(torch.rand((nTokens))*0.005)
         
-        self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((self.D, nTokens,))*0.5*(1.0/80))
+        self.contextVecToProbabilityVec = torch.nn.Parameter(torch.rand((self.D*self.dim, nTokens,))*0.5*(1.0/80))
         self.contextVecToProbabilityVecBias = torch.nn.Parameter(torch.rand((nTokens))*0.005)
         
 
@@ -566,12 +566,12 @@ class Nn2(torch.nn.Module):
             for it in range(2):
                 temp0 = t0 @ self.projForX[it]
 
-                # NOTNECESSARY< it is not necessary for now to reshape matrix temp0 into matrix with right dimensions >
+                temp1 = torch.reshape(temp0, (self.D, self.dim, )) # reshape
 
-                zArr.append(temp0)
+                zArr.append(temp1)
             
             temp0 = t0 @ self.projForV
-            temp0 = torch.reshape(temp0, (self.D, self.dim,)) # reshape so it has the right shape
+            temp0 = torch.reshape(temp0, (self.D, self.dim, )) # reshape so it has the right shape
             #print(temp0.shape, 'temp0.shape')
             zArr.append(temp0) # NOTE< just append to array >
 
@@ -584,13 +584,7 @@ class Nn2(torch.nn.Module):
         # * paper algorithm "Algorithm 3: Forward pass of Hyena"
         if True: # codeblock
 
-            #xArr = []
-            #xArr.append(torch.randn((self.N, self.D, )))
-            #xArr.append(torch.randn((self.N, self.D, )))
-
             hArr = [] # array for hyena matrices
-            #h.append(torch.randn((self.D  , self.dim, ))*0.05)
-            #h.append(torch.randn((self.D  , self.dim, ))*0.05)
             
             # calculate "h" hyena matrix from diagonal matrix "d"  and  Toeplitz matrix "s"
             for idx in range(len(self.sArr)):
@@ -604,22 +598,129 @@ class Nn2(torch.nn.Module):
             # self.N is the order of the hyena filter
 
             # see "Algorithm 3" in the Hyena paper
+
+
+
+            #print(v.shape, 'v.shape')
+            assert2(v.shape == (self.D, self.dim), 'v has wrong shape, expected (D, 1)')
+
+
+            # print(v.shape, 'v.shape') # DBG
+
+
             for n in range(1,self.N+1):
+                
+                vResArr = [] # variable to collect result of v matrix
+                
+                for i__t in range(self.D):
+                    #print(f'it i_t={i_t}') # DBG
+                    #print(f'{n} {i_t}') # DBG
+
+
+                    """
+                    all of the following code inside the two loop compute
+
+                    in parallel across D: v_t <- x_t_n (scale) (h__n * v)
+                    """
+
+                    temp__x_n = xArr[n]
+                    temp__x_n_t = temp__x_n[i__t]
+
+                    #print(temp__x_n.shape, 'x_n.shape') # DBG # must be (D, L)
+                    #print(temp__x_n_t.shape, 'x_n_t.shape') # DBG
+
+                    assert2(temp__x_n_t.shape == (self.dim,), 'x_n_t has wrong shape, expected (L)')
+
+
+                    temp__h__n = hArr[n-1]
+                    #print(temp__h__n.shape, 'h__n.shape') # DBG
+
+                    temp__h__t_n = temp__h__n[i__t]
+                    #print(temp__h__t_n.shape, 'h__t_n.shape') # DBG
+
+
+                    temp__v__t = v[i__t]
+                    #print(temp__v__t.shape, 'v__t.shape') # DBG
+
+                    # sub-matrix convolution which is just a dot-product
+                    # (h_t_n * v_t)
+                    temp__convRes = temp__h__t_n @ temp__v__t
+                    #print(temp__convRes, 'temp__convRes') # DBG
+
+                    # now we scale x__t_n by temp__convRes to compute v__t
+                    v__t = temp__x_n_t * temp__convRes
+                    #print(v__t.shape, 'v__t.shape') # DBG
+
+                    vResArr.append(v__t)
+
+                # convert array of tensors to matrix
+                v = torch.stack(vResArr)
+                #print(v.shape, 'v.shape') # DBG
+                
+
+                """
+                
                 t = []
                 for i_t in range(self.D):
                     #print(f'it i_t={i_t}') # DBG
-
                     #print(f'{n} {i_t}') # DBG
                     
-                    #print(h[n-1][i_t], 'h[]')
-                    tempV = transpose2(matConv1dTo2d(v[i_t]))
+
+                    #tempV = transpose2(matConv1dTo2d(v[i_t]))
                     #print(tempV, 'v')
-                    #fkokofkofokfokfko # OK
+
+                    print(v.shape, 'v.shape')
+
+
+                    ""
+                    all of the following code inside the two loop compute
+
+                    WRONG  in parallel across D: v_t <- x_t_n (mul components) (h__n * v)
+                    in parallel across D: v_t <- x_t_n (mul components) (h__n * v)
+
+                    ""
+
+                    temp__X_t = xArr[n]
+                    temp__X_t_n = temp__X_t[i_t]
+
+                    print(temp__X_t.shape, 'X_t.shape') # must be (D, L)
+                    print(temp__X_t_n.shape, 'X_t_n.shape')
+
+                    assert2(temp__X_t.shape == (self.D, self.dim), 'X_t has wrong shape, expected (D, L)')
+
+
+                    temp__h__n = hArr[n-1]
+
+                    print(temp__h__n.shape, 'h__n.shape')
+                    qqqqqqqqqqqq
+
+                    #temp0 = transpose2(v) @ temp__h__n # (h__n * v)    -- compute convolution
+                    temp0 = h__i @ v # (h__n * v)    -- compute convolution
+
+
+
+                    print(temp0.shape, 'temp0.shape')
+
+                    temp1 = temp__X_t_n * temp0 # (mul components)
+
+                    print(temp1.shape, 'temp1.shape')
+
+
+                    zzzzzzzzzzz
+
                     
                     #print(hArr[n-1].shape, 'h[n-1].shape') # DBG
-                    temp1 = hArr[n-1] @ tempV
-                    #print(temp1, 'temp1')
-                    #kfkfkfkfk # OK
+                    print(tempV.shape, 'tempV.shape')
+                    tempH = hArr[n-1][i_t]
+                    tempH = matConv1dTo2d(tempH)
+                    print(tempH.shape, 'hArr[n-1][i_t].shape')
+                    temp1 = tempH @ tempV ##### MODIFIED
+                    print(temp1, 'temp1')
+
+
+
+
+
 
 
                     #fkookfkofok # OK
@@ -632,16 +733,21 @@ class Nn2(torch.nn.Module):
                     
                     
                     #print(tempX, 'x_t_n')
-                    #print(tempX.shape, 'tempX.shape') # DBG
-                    #print(temp1.shape, 'temp1.shape') # DBG
+                    print(tempX.shape, 'tempX.shape') # DBG
+                    print(temp1.shape, 'temp1.shape') # DBG
                     
-                    temp0 = tempX @ temp1 # dot product
+                    #temp0 = tempX @ temp1 # dot product
+                    temp0 = tempX * temp1[0][0] ### scaling   - modified
+                    hgggggggg
+                    
                     #print(temp0, 'temp0')
                     assert2(temp0.shape == (1,1), 'result of dot product must be scalar value!')
                     t.append(temp0[0][0].item())
                 
                 #fkofkookodkokdokd
                 v = transpose2(torch.tensor([t])).to(self.device)
+            
+            """
 
             yHyenaHierachy = v
 
@@ -727,8 +833,7 @@ class Nn2(torch.nn.Module):
         # do transform from y to y0 to reduce dimensionality and thus parameter count
         #y0 = y @ self.convYtoLowerDim
 
-        
-        y0 = transpose2(yHyenaHierachy)
+        y0 = torch.reshape(yHyenaHierachy, (-1,)) # convert to one dimensional vector
 
 
         # OUT propbability head
@@ -938,7 +1043,8 @@ if __name__ == '__main__':
             loss = loss / nMicrobatch # see https://stackoverflow.com/questions/62067400/understanding-accumulated-gradients-in-pytorch
             
             # HACKY because we use retain_graph !
-            loss.backward(retain_graph=(ibatchIdx!=(nMicrobatch-1)))
+            #loss.backward(retain_graph=(ibatchIdx!=(nMicrobatch-1)))
+            loss.backward(retain_graph=True)
 
             #nn0.copyAfterBackward()
             
@@ -961,6 +1067,8 @@ if __name__ == '__main__':
         avgLoss = avgLoss * (1.0 - 0.001) + lossVal * 0.001
 
         if iStep % int(2500/nMicrobatch) == 0:
+            print('')
+
             lossVal, current = loss.item(), (iStep + 1) * len(x)
             epoch = float(iStep) / len(txtTokens) # compute current epoch
             print(f"loss={lossVal:>7f}  avgLoss={avgLoss:>7f}   [epoch={epoch:>4f}]")
@@ -971,6 +1079,9 @@ if __name__ == '__main__':
             
             print(f'correctPredictions={correctPredictions} wrongPredictions={wrongPredictions} correctPredRatio={currentPredRatio:>4f}')
             
+            # number of seen tokens by model
+            nTokenCount = iStep*nMicrobatch
+            print(f'nTokens={nTokenCount}k')
             
             # timing
             timeThisReport = time.time()
