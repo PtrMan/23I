@@ -8,8 +8,9 @@ a) change text sources in code of `entryBpe0.nim`
 
 b) run `entryBpe0.nim`, this will generate the file with the sequence of id's of the tokens and a file with the tokens for the tokenizer.
 
-c) train the model with the python script ``
+c) train the model with the python script `/AttentionExp0.py`
 
 **inference**
 
-TODO
+(currently there is no code to use the model for text-inference in Nim)
+
