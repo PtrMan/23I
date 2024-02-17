@@ -27,3 +27,16 @@ def xavierInitializer(in_features, out_features):
     std = math.sqrt(2.0 / (in_features + out_features))
     weight = torch.randn(in_features, out_features) * std
     return weight
+
+
+
+
+import numpy as np
+
+# used for positional encoding
+def generateWave(size=16,  frequency=1.0, amplitude=1.0, phase=0.0):
+    x = np.linspace(0, 2 * np.pi, size, endpoint=False)  # Create x-axis values
+    wave = amplitude * np.sin(frequency * x + phase)  # Generate sine wave
+    return wave
+
+
