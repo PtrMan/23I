@@ -251,14 +251,14 @@ if __name__ == '__main__':
     MAX_SEQ_LEN = 128 # Adjusted sequence length
     BATCH_SIZE = 32   # Adjusted batch size
     LEARNING_RATE = 1e-4
-    NUM_EPOCHS = 200 # 500 # Reduced epochs for faster example run
+    NUM_EPOCHS = 50 # 500 # Reduced epochs for faster example run
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     N_EVALUATION_PREDICTED_TOKENS = 50 # Generation length
 
     print(f"Using device: {DEVICE}")
 
     # --- Tokenizer ---
-    tokenizer_name = "bert-base-uncased" # Or choose another like "gpt2", "roberta-base"
+    tokenizer_name = 'gpt2' #  "bert-base-uncased" # Or choose another like "gpt2", "roberta-base"
     try:
         # Ensure the directory exists
         if not os.path.exists("./tokenizer_cache"):
@@ -299,8 +299,13 @@ if __name__ == '__main__':
                 try:
                     with open(file_path, "r", encoding="utf-8", errors='ignore') as f:
                         lines = f.readlines()
-                        lines = [line.strip() for line in lines if line.strip() and len(line) > 10] # Basic filter
-                        all_texts.extend(lines)
+                        
+                        #lines = [line.strip() for line in lines if line.strip() and len(line) > 10] # Basic filter
+                        #all_texts.extend(lines)
+                        
+                        # fix
+                        complete = '\n'.join(lines)
+                        all_texts.append(complete)
                 except Exception as e:
                     print(f"Error reading file {file_path}: {e}. Skipping.")
 
@@ -426,10 +431,27 @@ if __name__ == '__main__':
     model.eval()
 
     prompts = [
-        'A frog is',
+        '''a neural network is''',
+        "A '''frog''' is any member of a diverse and largely", # from wikipedia
         'Large Language Models (LLMs) are artificial intelligence systems',
         'The weather today looks like',
-        'To train a neural network, you need'
+        'To train a neural network, you need',
+        '''Question: Do you have a boyfriend/ girlfriend?
+
+Answer:''',
+        '''Question: What is Python?
+
+Answer:''',
+        '''Question: What is GPT?
+
+Answer:''',
+        '''Question: What is GPT-4?
+
+Answer:''',
+        '''Python is''',
+        '''intelligence is''',
+        '''GPT-4 is''',
+        
     ]
 
     for prompt_text in prompts:
