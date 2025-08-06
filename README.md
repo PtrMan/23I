@@ -10,6 +10,10 @@ Another try on a generic AI
 
 #### Implemented ML learning algorithms
 
+**Modern Hopfield Networks**
+
+[code](https://github.com/PtrMan/23I/blob/main/HopfieldNn0.py)
+
 **LM ; SynthRASM**
 
 [code](https://github.com/PtrMan/23I/blob/main/lmSynthRasm.py)
