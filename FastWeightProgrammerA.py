@@ -7,7 +7,7 @@ class Logger2(object):
         self.outFilepath = outFilepath
     
     def write(self, msg):
-        print(f'{msg}')
+        print(f'{msg}', flush=True)
 
         f = open(self.outFilepath, 'a')
         f.write(f'{msg}\n')
@@ -97,6 +97,8 @@ filepathsTrainingset = filepathsTrainingset + ['untitled16_toNarseseGoalB.txt', 
 filepathsTestset = ['./dataset_test/test0_math.txt', './dataset_test/test1_math.txt', './dataset_test/test2_math.txt']
 
 
+filepathsTrainingset = ["/notebooks/trainingdata_text/languageSimpleA/shakespearMidsummer.txt"]
+
 
 # for testing: simple task which is easy to solve for FFNN alone
 #filepathsTestset = []
@@ -148,7 +150,7 @@ if True:
 
 
 
-print(d0) # DBG
+#print(d0) # DBG
 
 
 # tokenize single files
@@ -163,8 +165,8 @@ for iFilename in filepathsTrainingset:
 
     tokensOfTrainingFiles.append(tokens)
 
-
-print(tokensOfTrainingFiles)
+if False:
+    print(tokensOfTrainingFiles)
 
 
 
@@ -172,17 +174,18 @@ print(tokensOfTrainingFiles)
 
 tokensOfTestFiles = []
 
-# tokenize single files
-for iFilename in filepathsTestset:
-    f = open(iFilename, 'r') # small
-    z0 = f.read()
-    f.close()
+if False:
+    # tokenize single files
+    for iFilename in filepathsTestset:
+        f = open(iFilename, 'r') # small
+        z0 = f.read()
+        f.close()
 
-    tokens = []
-    for z1 in z0:
-        tokens.append(d0[z1])
+        tokens = []
+        for z1 in z0:
+            tokens.append(d0[z1])
 
-    tokensOfTestFiles.append(tokens)
+        tokensOfTestFiles.append(tokens)
 
 
 
@@ -318,7 +321,7 @@ class Z(object):
     def __init__(self):
         
         self.inputSize = 22*4
-        self.outputSize = 70
+        self.outputSize = 0
 
 
         # for small unittest
@@ -336,7 +339,9 @@ class Z(object):
         # trying somewhat bigger for "toNarseseGoal"
         self.rnnHiddenstateSize = 80
         self.fastNnHiddensize = 60
-
+    
+    # builds the NN from the sizes etc.
+    def buildNn(self):
 
         # fast-NN
         self.fastNn = FastNn(self.inputSize+self.rnnHiddenstateSize, self.fastNnHiddensize, self.outputSize)
@@ -534,6 +539,9 @@ import random
 
 model = Z()
 
+model.outputSize = len(d0) # output size of the NN is the number of symbols
+
+model.buildNn() # build the NN
 
 
 xStimulusArr = [torch.randn(model.inputSize), torch.randn(model.inputSize), torch.randn(model.inputSize)]
@@ -567,7 +575,7 @@ wallclockStart = time.time()
 
 timeLastSaved = time.time() # time of the last saving of the model to disk
 
-for it in range(1800000):
+for it in range(50):
     model.reset()
     model.resetInternalState()
     
@@ -618,7 +626,7 @@ for it in range(1800000):
 
             #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum()
 
-            yTargetTensor = torch.ones(70)*1e-5
+            yTargetTensor = torch.ones(model.outputSize)*1e-5
             yTargetTensor[predictedToken] = 1.0
             yTargetTensor = yTargetTensor.cuda()
             yTensor = torch.nn.functional.softmax(yTensor) # softmax to compute probabilities
@@ -751,7 +759,7 @@ for it in range(1800000):
         logger.write(f'testLoss={lossVal:.6f}     wallclockTime={time.time()-wallclockStart:.1f} it={it}')
         
 
-
+print("info: finished")
 
 
 ''' traning run on smallish dataset
@@ -832,7 +840,7 @@ testLoss=538.478760     wallclockTime=65233.9 it=348800
 '''
 
 
-    
+
 
 
 # TODO< implement code to load model from file with "loadFromDisk(self, filepath)" >
