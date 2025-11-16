@@ -99,6 +99,8 @@ filepathsTestset = ['./dataset_test/test0_math.txt', './dataset_test/test1_math.
 
 filepathsTrainingset = ["/notebooks/trainingdata_text/languageSimpleA/shakespearMidsummer.txt"]
 
+filepathsTrainingset = ["/zfsPoolF/TYPE_mlDatasets/txtC/pln errata -- wiki opencog.txt"]
+
 
 # for testing: simple task which is easy to solve for FFNN alone
 #filepathsTestset = []
@@ -236,7 +238,7 @@ import math
 
 def clampGradients(grad):
     # 0.2 works in the small test with two training files
-    clampVal = 0.2 # 7.0 # 0.1 # 0.6 #0.1
+    clampVal = 0.07 # 0.2 # 7.0 # 0.1 # 0.6 #0.1
     return torch.clamp(grad, min=-clampVal, max=clampVal)
 
 
@@ -339,6 +341,10 @@ class Z(object):
         # trying somewhat bigger for "toNarseseGoal"
         self.rnnHiddenstateSize = 80
         self.fastNnHiddensize = 60
+
+        # small big NN
+        self.rnnHiddenstateSize = 160
+        self.fastNnHiddensize = 200
     
     # builds the NN from the sizes etc.
     def buildNn(self):
@@ -547,7 +553,7 @@ model.buildNn() # build the NN
 xStimulusArr = [torch.randn(model.inputSize), torch.randn(model.inputSize), torch.randn(model.inputSize)]
 xStimulusArr = [torch.randn(10)]
 
-yTarget = torch.randn(10)
+###yTarget = torch.randn(10)
 
 learningRate = 0.000005
 learningRate = 0.0000015
@@ -565,7 +571,7 @@ learningRate = 0.00005
 #learningRate = 0.00001 # experimenting for NARSESE translation task, result: learns to a low loss
 
 
-#learningRate = 0.0000015
+learningRate = 0.0002
 
 errorByDataIdx = {}
 
@@ -575,7 +581,7 @@ wallclockStart = time.time()
 
 timeLastSaved = time.time() # time of the last saving of the model to disk
 
-for it in range(50):
+for it in range(500000):
     model.reset()
     model.resetInternalState()
     
@@ -629,9 +635,18 @@ for it in range(50):
             yTargetTensor = torch.ones(model.outputSize)*1e-5
             yTargetTensor[predictedToken] = 1.0
             yTargetTensor = yTargetTensor.cuda()
-            yTensor = torch.nn.functional.softmax(yTensor) # softmax to compute probabilities
-            delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum()
-            #delta_E = delta_E + (1.0 - yTensor[predictedToken])
+
+            # target = torch.randint(5, (3,), dtype=torch.int64)
+            target = torch.tensor([predictedToken], dtype=torch.int64).cuda()
+            yTensor2 = yTensor.view(1, -1) # convert to two dimensional tensor
+            lossCrossEntropy = torch.nn.functional.cross_entropy(yTensor2, target)
+            delta_E = delta_E + lossCrossEntropy
+
+            #print(lossCrossEntropy) # DBG
+
+            #yTensor = torch.nn.functional.softmax(yTensor) # softmax to compute probabilities
+            #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum()
+            ####delta_E = delta_E + (1.0 - yTensor[predictedToken])
             
 
         
@@ -645,7 +660,7 @@ for it in range(50):
 
     errorByDataIdx[dataIdx] = delta_E.item() # keep track of error by data index
     
-    if False and (it % 2) == 0:
+    if True and (it % 2) == 0:
         #print('y='+str(yTensor)) # DBG
         
         lossVal = delta_E.item()
@@ -654,6 +669,10 @@ for it in range(50):
 
     if (it % 300) == 0:
         # debug error by dataindex
+
+        # debug loss by training data
+        print('debug error by training data (calculate start)')
+
         logger.write('')
         logger.write(f'it={it} lr={learningRate} wallclockTime={time.time()-wallclockStart:.1f}')
         for iDataIdx in range(len(tokensOfTrainingFiles)):
@@ -666,6 +685,8 @@ for it in range(50):
             if iDataIdx in errorByDataIdx:
                 lossOfAllSamples += errorByDataIdx[iDataIdx]
         logger.write(f'sum of training loss by data   sumTrainingLoss={lossOfAllSamples}')
+
+        print('debug error by training data (calculate finished)')
 
     if (time.time() - timeLastSaved) > 3.0*60.0: # is storing of the model necessary?
         # * store model to disk
