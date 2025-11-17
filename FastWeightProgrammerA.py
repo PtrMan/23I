@@ -1,3 +1,8 @@
+# patch suggestion
+
+
+
+
 import torch
 from torch import nn
 import random
@@ -318,8 +323,8 @@ class FastNn(object):
         #self.fc2_weight = self.fc2_weight + deltaBMatrix
 
 
-
-class Z(object):
+# layer for "fast weight programmer"
+class FwpLayer(object):
     def __init__(self):
         
         self.inputSize = 22*4
@@ -468,9 +473,6 @@ class Z(object):
 
 
 
-
-
-
         # fastNN
         fastNnActivation = self.fastNn.forward(torch.concat((xTensor,rnnHiddenstate2)))
 
@@ -543,7 +545,7 @@ class Z(object):
 
 import random
 
-model = Z()
+model = FwpLayer()
 
 model.outputSize = len(d0) # output size of the NN is the number of symbols
 
@@ -783,86 +785,10 @@ for it in range(500000):
 print("info: finished")
 
 
-''' traning run on smallish dataset
-
-it=348600 lr=5e-05 wallclockTime=65202.5
-training loss by data[0] trainingLoss=8.471057891845703
-training loss by data[1] trainingLoss=52.87592697143555
-training loss by data[2] trainingLoss=28.337223052978516
-training loss by data[3] trainingLoss=65.03510284423828
-training loss by data[4] trainingLoss=1212.8179931640625
-training loss by data[5] trainingLoss=12.58913803100586
-training loss by data[6] trainingLoss=12.150028228759766
-training loss by data[7] trainingLoss=11.741315841674805
-training loss by data[8] trainingLoss=70.9011459350586
-training loss by data[9] trainingLoss=81.2575454711914
-training loss by data[10] trainingLoss=43.926544189453125
-sum of training loss by data   sumTrainingLoss=1600.103021621704
-compute test set...
-before=?    decoded predicted correctly=True    simToCorrectPredVec=0.9947729110717773
-before=:?    decoded predicted correctly=True    simToCorrectPredVec=0.997277557849884
-before=: ?    decoded predicted correctly=False    simToCorrectPredVec=0.6079626083374023
-before=: m?    decoded predicted correctly=True    simToCorrectPredVec=0.8763298392295837
-before=: ma?    decoded predicted correctly=True    simToCorrectPredVec=0.6707082390785217
-before=: mat?    decoded predicted correctly=True    simToCorrectPredVec=0.837509036064148
-before=: math?    decoded predicted correctly=True    simToCorrectPredVec=0.9251056909561157
-before=: math\n?    decoded predicted correctly=False    simToCorrectPredVec=-0.20394423604011536
-before=: math\n3?    decoded predicted correctly=False    simToCorrectPredVec=0.10028758645057678
-before=: math\n3+?    decoded predicted correctly=False    simToCorrectPredVec=-0.16665902733802795
-before=: math\n3+1?    decoded predicted correctly=False    simToCorrectPredVec=0.09670333564281464
-before=: math\n3+1=?    decoded predicted correctly=False    simToCorrectPredVec=0.05758863314986229
-before=: math\n3+1=4?    decoded predicted correctly=False    simToCorrectPredVec=0.040982455015182495
-before=: math\n3+1=4\n?    decoded predicted correctly=False    simToCorrectPredVec=-0.33087706565856934
-before=: math\n3+1=4\nF?    decoded predicted correctly=False    simToCorrectPredVec=0.30757033824920654
-before=: math\n3+1=4\nFI?    decoded predicted correctly=False    simToCorrectPredVec=-0.09473289549350739
-... done
-testLoss=391.182800     wallclockTime=65202.6 it=348600
-compute test set...
-before=?    decoded predicted correctly=True    simToCorrectPredVec=0.9949053525924683
-before=:?    decoded predicted correctly=True    simToCorrectPredVec=0.9974330067634583
-before=: ?    decoded predicted correctly=False    simToCorrectPredVec=0.6220145225524902
-before=: m?    decoded predicted correctly=True    simToCorrectPredVec=0.8784787058830261
-before=: ma?    decoded predicted correctly=True    simToCorrectPredVec=0.6723710298538208
-before=: mat?    decoded predicted correctly=True    simToCorrectPredVec=0.8340929746627808
-before=: math?    decoded predicted correctly=True    simToCorrectPredVec=0.929621696472168
-before=: math\n?    decoded predicted correctly=False    simToCorrectPredVec=0.598127007484436
-before=: math\n1?    decoded predicted correctly=True    simToCorrectPredVec=0.740565299987793
-before=: math\n1+?    decoded predicted correctly=True    simToCorrectPredVec=0.778911828994751
-before=: math\n1+0?    decoded predicted correctly=True    simToCorrectPredVec=0.6644244194030762
-before=: math\n1+0=?    decoded predicted correctly=True    simToCorrectPredVec=0.698950469493866
-before=: math\n1+0=1?    decoded predicted correctly=True    simToCorrectPredVec=0.7967137098312378
-before=: math\n1+0=1\n?    decoded predicted correctly=False    simToCorrectPredVec=-0.18515640497207642
-before=: math\n1+0=1\nF?    decoded predicted correctly=False    simToCorrectPredVec=0.2831985056400299
-before=: math\n1+0=1\nFI?    decoded predicted correctly=False    simToCorrectPredVec=0.19213715195655823
-... done
-testLoss=84.473572     wallclockTime=65218.6 it=348700
-compute test set...
-before=?    decoded predicted correctly=True    simToCorrectPredVec=0.9950557947158813
-before=:?    decoded predicted correctly=True    simToCorrectPredVec=0.9973294138908386
-before=: ?    decoded predicted correctly=False    simToCorrectPredVec=0.6046138405799866
-before=: m?    decoded predicted correctly=True    simToCorrectPredVec=0.8816596865653992
-before=: ma?    decoded predicted correctly=True    simToCorrectPredVec=0.6734896302223206
-before=: mat?    decoded predicted correctly=True    simToCorrectPredVec=0.8352953791618347
-before=: math?    decoded predicted correctly=True    simToCorrectPredVec=0.9393747448921204
-before=: math\n?    decoded predicted correctly=False    simToCorrectPredVec=-0.18656158447265625
-before=: math\n3?    decoded predicted correctly=False    simToCorrectPredVec=0.1004447340965271
-before=: math\n3+?    decoded predicted correctly=False    simToCorrectPredVec=-0.05817402899265289
-before=: math\n3+2?    decoded predicted correctly=False    simToCorrectPredVec=-0.00100717693567276
-before=: math\n3+2=?    decoded predicted correctly=False    simToCorrectPredVec=-0.2926347851753235
-before=: math\n3+2=5?    decoded predicted correctly=False    simToCorrectPredVec=0.12622752785682678
-before=: math\n3+2=5\n?    decoded predicted correctly=False    simToCorrectPredVec=0.1836717426776886
-before=: math\n3+2=5\nF?    decoded predicted correctly=False    simToCorrectPredVec=0.2772703766822815
-before=: math\n3+2=5\nFI?    decoded predicted correctly=False    simToCorrectPredVec=-0.1946711540222168
-... done
-testLoss=538.478760     wallclockTime=65233.9 it=348800
-
-(aborted, probably not fully converged)
-
-'''
 
 
 
 
+# TODO HIGH< make NN multilayered >
 
-# TODO< implement code to load model from file with "loadFromDisk(self, filepath)" >
-
+# TODO LOW< implement code to load model from file with "loadFromDisk(self, filepath)" >
