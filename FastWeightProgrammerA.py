@@ -31,37 +31,6 @@ class RandomVecGenerator(object):
 
 
 
-class DataGen_TaskMathAddition(object):
-    def __init__(self):
-        pass
-    
-    def genByRng(self):
-        a = random.randint(0, 9)
-        b = random.randint(0, 9)
-        return gen(a, b)
-
-    def gen2(self, a, b):
-        res = a+b
-
-        resStr = f'{res}'
-        if res < 0 or abs(res) >= 8:
-            # format result so that NN has time to 'reason' about the complicated correct solution
-            resStr2 = ''
-            idx=0
-            for iResChar in resStr:
-                resStr2+=f'____{iResChar}'
-                idx+=1
-            resStr=resStr2
-
-        z = ''
-        z += 'goal: math\n'
-        z += f'{a}+{b}={resStr}\n'
-        z += 'FIN'
-        return z
-
-
-
-
 
 logger = Logger2('log5893934857.txt')
 
@@ -131,29 +100,6 @@ for iFilename in filepathsTrainingset:
             id0+=1
 
 
-# generate synthetic training samples
-if True:
-    syntheticDataGenerator = DataGen_TaskMathAddition()
-
-    for ia in range(0, 9+1):
-        for ib in range(0, 9+1):
-
-            trainingStr = syntheticDataGenerator.gen2(ia, ib) # generate synthetic training sample
-
-            print(trainingStr)
-
-            for z1 in trainingStr:
-                if z1 not in d0:
-                    d0[z1] = id0
-                    id0+=1
-            
-            
-            tokens = []
-            for z1 in trainingStr:
-                tokens.append(d0[z1])
-
-            tokensOfTrainingFiles.append(tokens)
-
 
 
 
@@ -171,6 +117,12 @@ for iFilename in filepathsTrainingset:
         tokens.append(d0[z1])
 
     tokensOfTrainingFiles.append(tokens)
+
+
+# cut training data short for testing
+if True:
+    tokensOfTrainingFiles = tokensOfTrainingFiles[:7000]
+
 
 if False:
     print(tokensOfTrainingFiles)
@@ -247,8 +199,10 @@ def clampGradients(grad):
     return torch.clamp(grad, min=-clampVal, max=clampVal)
 
 
-class FastNn(object):
+class FastNn(torch.nn.Module):
     def __init__(self, inputSize, hiddenSize, outputSize):
+        super().__init__()
+        
         self.fc1_weight = torch.randn(inputSize, hiddenSize)#, requires_grad=True)
         self.fc1_weight = self.fc1_weight.cuda()
         self.fc1_bias = torch.zeros(hiddenSize, requires_grad=True)
@@ -324,10 +278,11 @@ class FastNn(object):
 
 
 # layer for "fast weight programmer"
-class FwpLayer(object):
+class FwpLayer(torch.nn.Module):
     def __init__(self):
+        super().__init__()
         
-        self.inputSize = 22*4
+        self.inputSize = 0 # 22*4
         self.outputSize = 0
 
 
@@ -352,7 +307,9 @@ class FwpLayer(object):
         self.fastNnHiddensize = 200
     
     # builds the NN from the sizes etc.
-    def buildNn(self):
+    def build(self):
+
+
 
         # fast-NN
         self.fastNn = FastNn(self.inputSize+self.rnnHiddenstateSize, self.fastNnHiddensize, self.outputSize)
@@ -519,7 +476,9 @@ class FwpLayer(object):
         res = res + torch.sum(torch.pow(self.fastNn.fc2_weight, 2.0))
         return res
 
+    """ commented because not fully translated to generic code
     
+    TODO : use functionality of pytorch for storing+saving of a module!
     def saveToDisk(self, filepath):
         # create a dictionary to store the content
         modelDataDict = {
@@ -541,18 +500,219 @@ class FwpLayer(object):
             'weightUpdateTranslator_bias': self.ffnnWeightupdateCalcBias,
         }
         torch.save(modelDataDict, filepath)
+    """
 
 
+    
+    
+    
+
+class SimpleLinearLayer(torch.nn.Module):
+    """
+    A simple linear layer that applies a linear transformation to the incoming data.
+    This is equivalent to torch.nn.Linear.
+    """
+    def __init__(self, in_features: int, out_features: int):
+        """
+        Initializes the layer's parameters.
+
+        Args:
+            in_features (int): The number of input features.
+            out_features (int): The number of output features.
+        """
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+
+        # Initialize weight tensor and wrap it in nn.Parameter to make it a trainable parameter. [1, 2]
+        weight_tensor = torch.empty(out_features, in_features).cuda()
+        self.weight = torch.nn.Parameter(weight_tensor)
+
+        # Initialize bias tensor and wrap it in nn.Parameter.
+        bias_tensor = torch.empty(out_features).cuda()
+        self.bias = torch.nn.Parameter(bias_tensor)
+
+        # Apply standard initialization to the weights and biases.
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        """
+        Initializes or resets the layer's weights and biases.
+        This initialization is the default used by PyTorch's nn.Linear layer. [3, 4]
+        """
+        # Kaiming uniform initialization is a common default for linear layers. [5]
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        
+        # Calculate the fan-in (number of input features) to determine the bounds for bias initialization.
+        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+        bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+        nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return nn.functional.linear(x, self.weight, self.bias)
+
+
+
+class LogitHeadA(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+    
+    def init(self, sizeIn: int, sizeOut: int):        
+        # Create tensors for weight and bias
+        self.m = torch.empty(sizeIn, sizeOut).cuda()
+        self.bias = torch.empty(sizeOut).cuda()
+        
+        # Initialize tensors with a common strategy (Kaiming uniform for weights, uniform for bias)
+        # PyTorch's default nn.Linear uses this initialization.
+        torch.nn.init.kaiming_uniform_(self.m, a=math.sqrt(5))
+        fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.m)
+        bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+        torch.nn.init.uniform_(self.bias, -bound, bound)
+        
+        # Wrap the tensors in nn.Parameter to make them trainable.
+        self.m = torch.nn.Parameter(self.m)
+        self.bias = torch.nn.Parameter(self.bias)
+    
+    def forward(self, x):
+        return x @ self.m + self.bias
+
+
+
+class FwpNn(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        
+        self.sizeInput = 0
+        
+        self.sizeNumPredictedSymbols = 0
+        
+        self.sizeCrossbar = 220
+        
+        self.nLayers = 1
+
+        # linear layer to translate input to crossbar
+        self.inputLayer = None
+
+        self.layers = None # ModuleList with layers
+        
+        self.logitHead = None
+    
+    def reset(self):
+        
+        # reset layers
+        for itLayer in self.layers:
+            itLayer.reset()
+    
+
+    # reset internal state of NN
+    def resetInternalState(self):
+        # reset internal state of layers
+        for itLayer in self.layers:
+            itLayer.resetInternalState()
+
+
+    def learn(self, learningRate):
+        # Propagate learning to layers
+        for itLayer in self.layers:
+            itLayer.learn(learningRate)
+        
+        # Update logit head parameters using gradient descent
+        if self.logitHead.m.grad is not None:
+            self.logitHead.m.data -= clampGradients(self.logitHead.m.grad) * learningRate
+        if self.logitHead.bias.grad is not None:
+            self.logitHead.bias.data -= clampGradients(self.logitHead.bias.grad) * learningRate
+        
+        
+        
+        if self.inputLayer.weight.grad is not None:
+            self.inputLayer.weight.data -= clampGradients(self.inputLayer.weight.grad) * learningRate
+        if self.inputLayer.bias.grad is not None:
+            self.inputLayer.bias.data -= clampGradients(self.inputLayer.bias.grad) * learningRate
+    
+    
+    def build(self):
+        
+        self.inputLayer = SimpleLinearLayer(self.sizeInput, self.sizeCrossbar)
+        
+        
+        self.layers = nn.ModuleList([FwpLayer() for i in range(self.nLayers)])
+        
+        
+        # set params of layers
+        for itLayer in self.layers:
+            itLayer.inputSize = self.sizeCrossbar
+            itLayer.outputSize = self.sizeCrossbar
+        
+        # build layers
+        for itLayer in self.layers:
+            itLayer.build()
+        
+        
+        # logit head
+        self.logitHead = LogitHeadA()
+        self.logitHead.init(self.sizeCrossbar, self.sizeNumPredictedSymbols)
+        
+    def forward(self, x):
+        
+        crossbar = self.inputLayer.forward(x)
+        
+        for itLayer in self.layers:
+
+            nnOut = itLayer.forward(crossbar)
+            crossbar = crossbar + nnOut # skip connection
+        
+        
+        logitheadOut = self.logitHead.forward(crossbar)
+
+        return logitheadOut
+
+             
+    def saveModel(self, file_path, epoch, optimizer):#, loss):
+        # The state_dict contains all the learnable parameters of the model. [1, 2]
+        state = {
+            'epoch': epoch,
+            'model_state_dict': self.state_dict(),
+            #'optimizer_state_dict': optimizer.state_dict(),
+            #'loss': loss,
+        }
+        torch.save(state, file_path)
+        #print(f"Model saved to {file_path}")
+
+             
+    def loadModel(self, file_path, optimizer=None):
+        """
+        Loads the model's state_dict from a file.
+        """
+        # The map_location argument is used to load a model to a specific device (e.g., 'cpu' or 'cuda'). [3]
+        checkpoint = torch.load(file_path, map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+        
+        # load_state_dict() copies the parameters and buffers from the state_dict into the model. [4]
+        self.load_state_dict(checkpoint['model_state_dict'])
+        
+        if optimizer and 'optimizer_state_dict' in checkpoint:
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            
+        epoch = checkpoint.get('epoch', 0)
+        #loss = checkpoint.get('loss', float('inf'))
+        
+        #print(f"Model loaded from {file_path} at epoch {epoch} with loss {loss}")
+        return epoch#, loss
+
+  
 import random
 
-model = FwpLayer()
+model = FwpNn()
 
-model.outputSize = len(d0) # output size of the NN is the number of symbols
+####model.outputSize = len(d0) # output size of the NN is the number of symbols
 
-model.buildNn() # build the NN
+model.sizeInput = 4*22
+
+model.sizeNumPredictedSymbols = len(d0) # output size of the NN is the number of symbols
+
+model.build() # build the NN
 
 
-xStimulusArr = [torch.randn(model.inputSize), torch.randn(model.inputSize), torch.randn(model.inputSize)]
+xStimulusArr = [torch.randn(model.sizeInput), torch.randn(model.sizeInput), torch.randn(model.sizeInput)]
 xStimulusArr = [torch.randn(10)]
 
 ###yTarget = torch.randn(10)
@@ -592,17 +752,9 @@ for it in range(500000):
     
     dataIdx = None
     
-    if False: # simple task
-        for learnIt in range(6):
-
-            xTensor = xStimulusArr[it % len(xStimulusArr)]
-            yTensor = model.forward(xTensor)
-
-            #print('y='+str(yTensor)) # DBG
-
-            delta_E = delta_E + (yTensor - yTarget).pow(2).sum()
-    elif True:
+    if True:
         
+        cntDat = 0
         
         
         dataIdx = random.randint(0, len(tokensOfTrainingFiles)-1) # index in training data selection
@@ -611,6 +763,8 @@ for it in range(500000):
         # iterate over token and feed stimulus into NN
         for iTokenIdx in range(len(tokens)-4):
             
+            cntDat += 1
+
             currentTokenArr = []
             for idx in range(4):
                 currentTokenArr.append( tokens[iTokenIdx+idx] )
@@ -634,13 +788,14 @@ for it in range(500000):
 
             #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum()
 
-            yTargetTensor = torch.ones(model.outputSize)*1e-5
-            yTargetTensor[predictedToken] = 1.0
-            yTargetTensor = yTargetTensor.cuda()
+            #yTargetTensor = torch.ones(model.outputSize)*1e-5
+            #yTargetTensor[predictedToken] = 1.0
+            #yTargetTensor = yTargetTensor.cuda()
 
             # target = torch.randint(5, (3,), dtype=torch.int64)
             target = torch.tensor([predictedToken], dtype=torch.int64).cuda()
             yTensor2 = yTensor.view(1, -1) # convert to two dimensional tensor
+
             lossCrossEntropy = torch.nn.functional.cross_entropy(yTensor2, target)
             delta_E = delta_E + lossCrossEntropy
 
@@ -653,8 +808,11 @@ for it in range(500000):
 
         
         # * weight decay
-        weightDecay = 0.01 # maybe 0.1 is good,    set to 0.0 to disable weight decay!
-        delta_E = delta_E + weightDecay*model.calcWeightMag()
+        enableWeightDecay = False
+
+        if enableWeightDecay:
+            weightDecay = 0.0001 # maybe 0.1 is good,    set to 0.0 to disable weight decay!
+            delta_E = delta_E + weightDecay*model.calcWeightMag()
 
         
 
@@ -662,10 +820,10 @@ for it in range(500000):
 
     errorByDataIdx[dataIdx] = delta_E.item() # keep track of error by data index
     
-    if True and (it % 2) == 0:
+    if True and (it % 1) == 0:
         #print('y='+str(yTensor)) # DBG
         
-        lossVal = delta_E.item()
+        lossVal = delta_E.item() / cntDat
         print(f'trainingLoss={lossVal:.6f} dataIdx={dataIdx} lr={learningRate}     wallclockTime={time.time()-wallclockStart:.1f} it={it}')
         #print(f'training {nCorrect}/{nCnt} = {nCorrect/nCnt}')
 
@@ -693,7 +851,8 @@ for it in range(500000):
     if (time.time() - timeLastSaved) > 3.0*60.0: # is storing of the model necessary?
         # * store model to disk
         print('store model to disk...')
-        model.saveToDisk('modernFastWeightProgrammerEmath.pth')
+        ####model.saveToDisk('modernFastWeightProgrammerEmath.pth')
+        model.saveModel('modernFastWeightProgrammerEmath.pth', 0, None)
         print('...done')
 
         timeLastSaved = time.time()
@@ -789,6 +948,7 @@ print("info: finished")
 
 
 
-# TODO HIGH< make NN multilayered >
+# TODO MID< use storing >
 
 # TODO LOW< implement code to load model from file with "loadFromDisk(self, filepath)" >
+
