@@ -190,7 +190,7 @@ import math
 
 def clampGradients(grad):
     # 0.2 works in the small test with two training files
-    clampVal = 0.07 # 0.2 # 7.0 # 0.1 # 0.6 #0.1
+    clampVal = 0.2 # 0.07 # 0.2 # 7.0 # 0.1 # 0.6 #0.1
     return torch.clamp(grad, min=-clampVal, max=clampVal)
 
 
@@ -198,12 +198,12 @@ class FastNn(torch.nn.Module):
     def __init__(self, inputSize, hiddenSize, outputSize):
         super().__init__()
         
-        self.fc1_weight = torch.randn(inputSize, hiddenSize)#, requires_grad=True)
+        self.fc1_weight = torch.randn(inputSize, hiddenSize) * 0.02 #, requires_grad=True)
         self.fc1_weight = self.fc1_weight.cuda()
         self.fc1_bias = torch.zeros(hiddenSize, requires_grad=True)
         self.fc1_bias = self.fc1_bias.cuda()
 
-        self.fc2_weight = torch.randn(hiddenSize, outputSize, requires_grad=True)
+        self.fc2_weight = torch.randn(hiddenSize, outputSize, requires_grad=True) * 0.02
         self.fc2_weight = self.fc2_weight.cuda()
         self.fc2_bias = torch.zeros(outputSize, requires_grad=True)
         self.fc2_bias = self.fc2_bias.cuda()
@@ -806,7 +806,7 @@ if __name__ == '__main__':
 
     CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/txtForPrototypingA'
 
-    MAX_SEQ_LEN = 80
+    MAX_SEQ_LEN = 8
     BATCH_SIZE = 1
 
 
@@ -935,6 +935,8 @@ if __name__ == '__main__':
 
     learningRate = 0.0002
 
+    learningRate = 0.00005
+
     errorByDataIdx = {}
 
     import time
@@ -1019,8 +1021,18 @@ if __name__ == '__main__':
                 target = torch.tensor([predictedToken], dtype=torch.int64).cuda()
                 yTensor2 = yTensor.view(1, -1) # convert to two dimensional tensor
 
-                lossCrossEntropy = torch.nn.functional.cross_entropy(yTensor2, target)
+                # IMPORTANT: use log softmax
+                yTensor3 = torch.nn.functional.log_softmax(yTensor2)
+                
+                lossCrossEntropy = torch.nn.functional.cross_entropy(yTensor3, target)
                 delta_E = delta_E + lossCrossEntropy
+
+
+
+                yTensor4 = torch.nn.functional.softmax(yTensor2)
+                lossCrossEntropy2 = torch.nn.functional.cross_entropy(yTensor4, target)
+                print(lossCrossEntropy2)
+                #delta_E = delta_E + lossCrossEntropy2
 
                 #print('loss of prediction (cross entropy)=') # DBG
                 #print(lossCrossEntropy) # DBG
