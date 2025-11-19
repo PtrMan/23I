@@ -945,6 +945,9 @@ if __name__ == '__main__':
 
     timeLastSaved = time.time() # time of the last saving of the model to disk
 
+
+    runningLossAvg = None
+
     for it in range(500000):
         
         
@@ -1054,11 +1057,22 @@ if __name__ == '__main__':
 
             ####errorByDataIdx[dataIdx] = delta_E.item() # keep track of error by data index
             
+
+            if runningLossAvg is None:
+                runningLossAvg = (delta_E.item() / cntDat)
+
+            lossAvgFactor = 0.002
+            runningLossAvg = runningLossAvg * (1.0-lossAvgFactor) + (delta_E.item() / cntDat)*lossAvgFactor
+
+
             if True and (it % 1) == 0:
                 #print('y='+str(yTensor)) # DBG
                 
                 lossVal = delta_E.item() / cntDat
+                print('')
                 print(f'trainingLoss={lossVal:.6f} dataIdx={dataIdx} lr={learningRate}     wallclockTime={time.time()-wallclockStart:.1f} it={it}')
+                print(f'avgTrainingLoss={runningLossAvg:.6f}')
+
                 #print(f'training {nCorrect}/{nCnt} = {nCorrect/nCnt}')
 
             """
