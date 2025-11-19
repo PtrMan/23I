@@ -1,8 +1,3 @@
-# patch suggestion
-
-
-
-
 import torch
 from torch import nn
 import random
@@ -561,14 +556,21 @@ class LogitHeadA(torch.nn.Module):
         # Create tensors for weight and bias
         self.m = torch.empty(sizeIn, sizeOut).cuda()
         self.bias = torch.empty(sizeOut).cuda()
+
+
+        # initialize with very small values for the output head. so that logits are evenly distributed at first
+        torch.nn.init.normal_(self.m, mean=0.0, std=0.01)
+        torch.nn.init.zeros_(self.bias)
         
+        """
         # Initialize tensors with a common strategy (Kaiming uniform for weights, uniform for bias)
         # PyTorch's default nn.Linear uses this initialization.
         torch.nn.init.kaiming_uniform_(self.m, a=math.sqrt(5))
         fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.m)
         bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
         torch.nn.init.uniform_(self.bias, -bound, bound)
-        
+        """
+
         # Wrap the tensors in nn.Parameter to make them trainable.
         self.m = torch.nn.Parameter(self.m)
         self.bias = torch.nn.Parameter(self.bias)
@@ -634,6 +636,16 @@ class FwpNn(torch.nn.Module):
             self.inputLayer.bias.data -= clampGradients(self.inputLayer.bias.grad) * learningRate
     
     
+ 
+        if self.embedding.weight.grad is not None:
+            # Embeddings often get sparse gradients, manual SGD works but is slow. 
+            # Ensure we clamp and update.
+            self.embedding.weight.data -= clampGradients(self.embedding.weight.grad) * learningRate
+            
+ 
+
+
+
     def build(self):
         padding_idx = 0
 
@@ -1165,4 +1177,7 @@ if __name__ == '__main__':
 
 
 
+
+# TODO TODO TODO : implement the embedding layer, give the model only the ids of the tokens!
+# TODO : let the model predict the symbol from the alphabet of the tokenizer
 
