@@ -49,7 +49,7 @@ def retLetterByTokenId(tokenId):
     raise Exception('tokenId was not found!')
 
 
-
+"""
 filepathsTestset = []
 
 
@@ -126,11 +126,11 @@ if True:
 
 if False:
     print(tokensOfTrainingFiles)
+"""
 
 
 
-
-
+"""
 tokensOfTestFiles = []
 
 if False:
@@ -145,7 +145,7 @@ if False:
             tokens.append(d0[z1])
 
         tokensOfTestFiles.append(tokens)
-
+"""
 
 
 
@@ -582,10 +582,14 @@ class FwpNn(torch.nn.Module):
     def __init__(self):
         super().__init__()
         
-        self.sizeInput = 0
+        ###self.sizeInput = 0
         
-        self.sizeNumPredictedSymbols = 0
+        #self.sizeNumPredictedSymbols = 0
+
+        self.sizeVocab = 0 # number of symbols in the vocabularity
         
+        self.sizeEmbedding = 110 # dimension of the embedding
+
         self.sizeCrossbar = 220
         
         self.nLayers = 1
@@ -631,8 +635,15 @@ class FwpNn(torch.nn.Module):
     
     
     def build(self):
+        padding_idx = 0
+
+        # Input Embedding
+        self.embedding = nn.Embedding(self.sizeVocab, self.sizeEmbedding, padding_idx=padding_idx).cuda()
+
+
+
         
-        self.inputLayer = SimpleLinearLayer(self.sizeInput, self.sizeCrossbar)
+        self.inputLayer = SimpleLinearLayer(self.sizeEmbedding*4, self.sizeCrossbar)
         
         
         self.layers = nn.ModuleList([FwpLayer() for i in range(self.nLayers)])
@@ -650,9 +661,15 @@ class FwpNn(torch.nn.Module):
         
         # logit head
         self.logitHead = LogitHeadA()
-        self.logitHead.init(self.sizeCrossbar, self.sizeNumPredictedSymbols)
+        #self.logitHead.init(self.sizeCrossbar, self.sizeNumPredictedSymbols)
+        self.logitHead.init(self.sizeCrossbar, self.sizeVocab)
+
+    ###def forward(self, x):    
+    def forward(self, input_ids: torch.Tensor):
         
-    def forward(self, x):
+        # 1. Embed Input Tokens
+        x = self.embedding(input_ids) # (batch, seq_len, d_model)
+        x = torch.flatten(x)
         
         crossbar = self.inputLayer.forward(x)
         
@@ -698,257 +715,454 @@ class FwpNn(torch.nn.Module):
         #print(f"Model loaded from {file_path} at epoch {epoch} with loss {loss}")
         return epoch#, loss
 
+
+
+
+
+
+
+
+
+
+#########################
+# dataset utilities
+
+from torch.utils.data import Dataset, DataLoader
+from transformers import AutoTokenizer # Use AutoTokenizer for flexibility
+
+
+
+# --- Dataset Definition ---
+class TextDataset(Dataset):
+    def __init__(self, texts, tokenizer, max_length):
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.pad_token_id = tokenizer.pad_token_id
+        if self.pad_token_id is None:
+             raise ValueError("Tokenizer must have a pad_token_id.")
+
+        self.examples = []
+        print("Tokenizing and chunking data...")
+        for text in texts:
+            if not text: continue # Skip empty lines
+            tokenized_text = tokenizer.encode(text, add_special_tokens=False)
+            # Chunk into sequences of max_length
+            for i in range(0, len(tokenized_text) - 1, max_length): # -1 because target is shifted
+                chunk = tokenized_text[i : i + max_length + 1] # Get one extra token for target
+                if len(chunk) < 2: continue # Need at least one input and one target
+
+                input_chunk = chunk[:-1]
+                target_chunk = chunk[1:]
+
+                # Pad input_chunk
+                padding_len_input = max_length - len(input_chunk)
+                padded_input = input_chunk + [self.pad_token_id] * padding_len_input
+
+                # Pad target_chunk and set padding targets to -100
+                padding_len_target = max_length - len(target_chunk)
+                padded_target = target_chunk + [-100] * padding_len_target # Use -100 for ignore_index
+
+                self.examples.append({
+                    "input_ids": torch.tensor(padded_input, dtype=torch.long),
+                    "target_ids": torch.tensor(padded_target, dtype=torch.long)
+                })
+        print(f"Created {len(self.examples)} examples.")
+
+    def __len__(self):
+        return len(self.examples)
+
+    def __getitem__(self, idx):
+        return self.examples[idx]
+
+
+
+
+
+
+
   
 import random
+import os
+import glob
 
-model = FwpNn()
-
-####model.outputSize = len(d0) # output size of the NN is the number of symbols
-
-model.sizeInput = 4*22
-
-model.sizeNumPredictedSymbols = len(d0) # output size of the NN is the number of symbols
-
-model.build() # build the NN
+from torch.utils.data import Dataset, DataLoader
+from transformers import AutoTokenizer # Use AutoTokenizer for flexibility
 
 
-xStimulusArr = [torch.randn(model.sizeInput), torch.randn(model.sizeInput), torch.randn(model.sizeInput)]
-xStimulusArr = [torch.randn(10)]
-
-###yTarget = torch.randn(10)
-
-learningRate = 0.000005
-learningRate = 0.0000015
-#learningRate = 0.000002 # works well enough down to error=~15.0 which isn't great
-
-# for unittest
-learningRate = 0.00015 # worked very well for unittest
-#learningRate = 0.0006
-
-learningRate = 0.00005 / len(tokensOfTrainingFiles) # worked well with training set size 10
-learningRate = 0.00005 # works fine for smallish sized dataset
-learningRate = 0.00009 # experimental, seems to be to fast according to failure of convergence on simple arithmetic problem
-learningRate = 0.00005
-
-#learningRate = 0.00001 # experimenting for NARSESE translation task, result: learns to a low loss
+if __name__ == '__main__':
 
 
-learningRate = 0.0002
+    CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/txtForPrototypingA'
 
-errorByDataIdx = {}
+    MAX_SEQ_LEN = 80
+    BATCH_SIZE = 1
 
-import time
 
-wallclockStart = time.time()
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-timeLastSaved = time.time() # time of the last saving of the model to disk
 
-for it in range(500000):
-    model.reset()
-    model.resetInternalState()
-    
-    delta_E = torch.tensor([[0.0]])
-    delta_E = delta_E.cuda()
-    
-    dataIdx = None
-    
-    if True:
-        
-        cntDat = 0
-        
-        
-        dataIdx = random.randint(0, len(tokensOfTrainingFiles)-1) # index in training data selection
-        tokens = tokensOfTrainingFiles[dataIdx] # select tokens of random input file
-        
-        # iterate over token and feed stimulus into NN
-        for iTokenIdx in range(len(tokens)-4):
-            
-            cntDat += 1
 
-            currentTokenArr = []
-            for idx in range(4):
-                currentTokenArr.append( tokens[iTokenIdx+idx] )
-            predictedToken = tokens[iTokenIdx+4]
-            
-            xTensor0 = vectorsByInputToken[currentTokenArr[0]] * 0.1
-            xTensor1 = vectorsByInputToken[currentTokenArr[1]] * 0.1
-            xTensor2 = vectorsByInputToken[currentTokenArr[2]] * 0.1
-            xTensor3 = vectorsByInputToken[currentTokenArr[3]] * 0.1
-            
-            xTensor = torch.concat((xTensor0,xTensor1,xTensor2,xTensor3))
-            xTensor = xTensor.cuda()
+    # --- Tokenizer ---
+    tokenizer_name = 'gpt2' #  "bert-base-uncased" # Or choose another like "gpt2", "roberta-base"
+    try:
+        # Ensure the directory exists
+        if not os.path.exists("./tokenizer_cache"):
+            os.makedirs("./tokenizer_cache")
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, cache_dir="./tokenizer_cache")
+    except Exception as e:
+        print(f"Error loading tokenizer '{tokenizer_name}': {e}")
+        print("Please ensure you have internet connection or the model is cached.")
+        exit()
 
-            ###
-            ###yTargetTensor = vectorsByInputToken[predictedToken] * 0.1
-            
+    VOCAB_SIZE = tokenizer.vocab_size
+    # Add pad token if it doesn't exist (common for GPT-2)
+    if tokenizer.pad_token is None:
+        print("Tokenizer does not have a default pad token. Adding '[PAD]'.")
+        # Use add_special_tokens for potential resizing needed
+        tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+        VOCAB_SIZE = len(tokenizer) # Update vocab size
+        print(f"New vocab size: {VOCAB_SIZE}")
 
-            yTensor = model.forward(xTensor)
+    print(f"Tokenizer loaded: {tokenizer_name}, Vocab size: {VOCAB_SIZE}")
+    PAD_TOKEN_ID = tokenizer.pad_token_id
+    if PAD_TOKEN_ID is None:
+        raise ValueError("Tokenizer failed to set a pad_token_id")
+    print(f"Pad token: '{tokenizer.pad_token}', ID: {PAD_TOKEN_ID}")
 
-            #print('y='+str(yTensor)) # DBG
 
-            #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum()
 
-            #yTargetTensor = torch.ones(model.outputSize)*1e-5
-            #yTargetTensor[predictedToken] = 1.0
-            #yTargetTensor = yTargetTensor.cuda()
 
-            # target = torch.randint(5, (3,), dtype=torch.int64)
-            target = torch.tensor([predictedToken], dtype=torch.int64).cuda()
-            yTensor2 = yTensor.view(1, -1) # convert to two dimensional tensor
 
-            lossCrossEntropy = torch.nn.functional.cross_entropy(yTensor2, target)
-            delta_E = delta_E + lossCrossEntropy
 
-            #print(lossCrossEntropy) # DBG
 
-            #yTensor = torch.nn.functional.softmax(yTensor) # softmax to compute probabilities
-            #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum()
-            ####delta_E = delta_E + (1.0 - yTensor[predictedToken])
-            
 
-        
-        # * weight decay
-        enableWeightDecay = False
 
-        if enableWeightDecay:
-            weightDecay = 0.0001 # maybe 0.1 is good,    set to 0.0 to disable weight decay!
-            delta_E = delta_E + weightDecay*model.calcWeightMag()
+    # --- Load Data from Directory ---
+    all_texts = []
+    if os.path.isdir(CORPUS_DIRECTORY):
+        print(f"Attempting to load text files from directory: {CORPUS_DIRECTORY}")
+        text_files = glob.glob(os.path.join(CORPUS_DIRECTORY, '*.txt'))
 
-        
+        if not text_files:
+            print(f"Warning: No '.txt' files found in {CORPUS_DIRECTORY}.")
+        else:
+            print(f"Found {len(text_files)} '.txt' files.")
+            for file_path in text_files:
+                try:
+                    with open(file_path, "r", encoding="utf-8", errors='ignore') as f:
+                        lines = f.readlines()
+                        
+                        #lines = [line.strip() for line in lines if line.strip() and len(line) > 10] # Basic filter
+                        #all_texts.extend(lines)
+                        
+                        # fix
+                        complete = '\n'.join(lines)
+                        all_texts.append(complete)
+                except Exception as e:
+                    print(f"Error reading file {file_path}: {e}. Skipping.")
 
-    
+            if all_texts:
+                print(f"Loaded a total of {len(all_texts)} lines from {len(text_files)} files.")
+            else:
+                 print(f"Warning: Found {len(text_files)} files, but couldn't load any valid text lines.")
+    else:
+        print(f"Directory '{CORPUS_DIRECTORY}' not found. No data loaded.")
 
-    errorByDataIdx[dataIdx] = delta_E.item() # keep track of error by data index
-    
-    if True and (it % 1) == 0:
-        #print('y='+str(yTensor)) # DBG
-        
-        lossVal = delta_E.item() / cntDat
-        print(f'trainingLoss={lossVal:.6f} dataIdx={dataIdx} lr={learningRate}     wallclockTime={time.time()-wallclockStart:.1f} it={it}')
-        #print(f'training {nCorrect}/{nCnt} = {nCorrect/nCnt}')
 
-    if (it % 300) == 0:
-        # debug error by dataindex
+    # --- Dataset and DataLoader ---
+    train_dataset = TextDataset(all_texts, tokenizer, max_length=MAX_SEQ_LEN)
 
-        # debug loss by training data
-        print('debug error by training data (calculate start)')
+    if len(train_dataset) == 0:
+        print("ERROR: Created dataset is empty. Cannot train. Check data sources and tokenization.")
+        exit()
 
-        logger.write('')
-        logger.write(f'it={it} lr={learningRate} wallclockTime={time.time()-wallclockStart:.1f}')
-        for iDataIdx in range(len(tokensOfTrainingFiles)):
-            if iDataIdx in errorByDataIdx:
-                logger.write(f'training loss by data[{iDataIdx}] trainingLoss={errorByDataIdx[iDataIdx]}')
-        
-        # compute sum for convinience
-        lossOfAllSamples = 0.0
-        for iDataIdx in range(len(tokensOfTrainingFiles)):
-            if iDataIdx in errorByDataIdx:
-                lossOfAllSamples += errorByDataIdx[iDataIdx]
-        logger.write(f'sum of training loss by data   sumTrainingLoss={lossOfAllSamples}')
+    print(f"Successfully created dataset with {len(train_dataset)} items.")
+    # Use pin_memory=True if using GPU for potentially faster data transfer
+    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
+                                  pin_memory=True if DEVICE == torch.device("cuda") else False)
+    print("DataLoader created.")
 
-        print('debug error by training data (calculate finished)')
 
-    if (time.time() - timeLastSaved) > 3.0*60.0: # is storing of the model necessary?
-        # * store model to disk
-        print('store model to disk...')
-        ####model.saveToDisk('modernFastWeightProgrammerEmath.pth')
-        model.saveModel('modernFastWeightProgrammerEmath.pth', 0, None)
-        print('...done')
 
-        timeLastSaved = time.time()
+    model = FwpNn()
 
-    #if it == 5000:
-    #    learningRate *= 0.3
+    ####model.outputSize = len(d0) # output size of the NN is the number of symbols
+
+    model.sizeInput = 4*22
+
+    model.nLayers = 2
+
+    model.sizeNumPredictedSymbols = len(d0) # output size of the NN is the number of symbols
+
+    model.sizeVocab = VOCAB_SIZE
+
+    model.build() # build the NN
+
+
+    xStimulusArr = [torch.randn(model.sizeInput), torch.randn(model.sizeInput), torch.randn(model.sizeInput)]
+    xStimulusArr = [torch.randn(10)]
+
+    ###yTarget = torch.randn(10)
+
+    learningRate = 0.000005
+    learningRate = 0.0000015
+    #learningRate = 0.000002 # works well enough down to error=~15.0 which isn't great
+
+    # for unittest
+    learningRate = 0.00015 # worked very well for unittest
+    #learningRate = 0.0006
 
     
-    delta_E.backward()#retain_graph=True)
+    #learningRate = 0.00005 / len(tokensOfTrainingFiles) # worked well with training set size 10
+    learningRate = 0.00005 # works fine for smallish sized dataset
+    learningRate = 0.00009 # experimental, seems to be to fast according to failure of convergence on simple arithmetic problem
+    learningRate = 0.00005
+
+    #learningRate = 0.00001 # experimenting for NARSESE translation task, result: learns to a low loss
+
+
+    learningRate = 0.0002
+
+    errorByDataIdx = {}
+
+    import time
+
+    wallclockStart = time.time()
+
+    timeLastSaved = time.time() # time of the last saving of the model to disk
+
+    for it in range(500000):
+        
+        
+        dataIdx = None
+        
+        
+
+        
+        for i, batch in enumerate(train_dataloader):
+            
+            model.reset()
+            model.resetInternalState()
+            
+            delta_E = torch.tensor([[0.0]])
+            delta_E = delta_E.cuda()
+            
+            
+            
+            
+            input_ids = batch["input_ids"].to(DEVICE)   # Shape: [batch_size, seq_len]
+            target_ids = batch["target_ids"].to(DEVICE) # Shape: [batch_size, seq_len]
+            
+            cntDat = 0
+            
+            
+            ###dataIdx = random.randint(0, len(tokensOfTrainingFiles)-1) # index in training data selection
+            ###tokens = tokensOfTrainingFiles[dataIdx] # select tokens of random input file
+            
+            tokens = input_ids[0].tolist()
+
+            #print('tokens to train:')
+            #print(tokens)
+
+            # iterate over token and feed stimulus into NN
+            for iTokenIdx in range(len(tokens)-4):
+                
+                cntDat += 1
+
+                
+                currentTokenArr = []
+                for idx in range(4):
+                    currentTokenArr.append( tokens[iTokenIdx+idx] )
+                
+                predictedToken = tokens[iTokenIdx+4]
+                
+                """
+                xTensor0 = vectorsByInputToken[currentTokenArr[0]] * 0.1
+                xTensor1 = vectorsByInputToken[currentTokenArr[1]] * 0.1
+                xTensor2 = vectorsByInputToken[currentTokenArr[2]] * 0.1
+                xTensor3 = vectorsByInputToken[currentTokenArr[3]] * 0.1
+                
+                xTensor = torch.concat((xTensor0,xTensor1,xTensor2,xTensor3))
+                xTensor = xTensor.cuda()
+                """
+
+                ###
+                ###yTargetTensor = vectorsByInputToken[predictedToken] * 0.1
+                
+                inputIds = currentTokenArr
+                inputIds = torch.tensor(inputIds, dtype=torch.int64).cuda()
+
+                #yTensor = model.forward(xTensor)
+                yTensor = model.forward(inputIds)
+
+                #print('y='+str(yTensor)) # DBG
+
+                #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum()
+
+                #yTargetTensor = torch.ones(model.outputSize)*1e-5
+                #yTargetTensor[predictedToken] = 1.0
+                #yTargetTensor = yTargetTensor.cuda()
+
+                # target = torch.randint(5, (3,), dtype=torch.int64)
+                target = torch.tensor([predictedToken], dtype=torch.int64).cuda()
+                yTensor2 = yTensor.view(1, -1) # convert to two dimensional tensor
+
+                lossCrossEntropy = torch.nn.functional.cross_entropy(yTensor2, target)
+                delta_E = delta_E + lossCrossEntropy
+
+                #print('loss of prediction (cross entropy)=') # DBG
+                #print(lossCrossEntropy) # DBG
+
+                #yTensor = torch.nn.functional.softmax(yTensor) # softmax to compute probabilities
+                #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum()
+                ####delta_E = delta_E + (1.0 - yTensor[predictedToken])
+                
+
+            
+            # * weight decay
+            enableWeightDecay = False
+
+            if enableWeightDecay:
+                weightDecay = 0.0001 # maybe 0.1 is good,    set to 0.0 to disable weight decay!
+                delta_E = delta_E + weightDecay*model.calcWeightMag()
+
+            
+
+            ####errorByDataIdx[dataIdx] = delta_E.item() # keep track of error by data index
+            
+            if True and (it % 1) == 0:
+                #print('y='+str(yTensor)) # DBG
+                
+                lossVal = delta_E.item() / cntDat
+                print(f'trainingLoss={lossVal:.6f} dataIdx={dataIdx} lr={learningRate}     wallclockTime={time.time()-wallclockStart:.1f} it={it}')
+                #print(f'training {nCorrect}/{nCnt} = {nCorrect/nCnt}')
+
+            """
+            if (it % 300) == 0:
+                # debug error by dataindex
+
+                # debug loss by training data
+                print('debug error by training data (calculate start)')
+
+                logger.write('')
+                logger.write(f'it={it} lr={learningRate} wallclockTime={time.time()-wallclockStart:.1f}')
+                for iDataIdx in range(len(tokensOfTrainingFiles)):
+                    if iDataIdx in errorByDataIdx:
+                        logger.write(f'training loss by data[{iDataIdx}] trainingLoss={errorByDataIdx[iDataIdx]}')
+                
+                # compute sum for convinience
+                lossOfAllSamples = 0.0
+                for iDataIdx in range(len(tokensOfTrainingFiles)):
+                    if iDataIdx in errorByDataIdx:
+                        lossOfAllSamples += errorByDataIdx[iDataIdx]
+                logger.write(f'sum of training loss by data   sumTrainingLoss={lossOfAllSamples}')
+
+                print('debug error by training data (calculate finished)')
+            """
+            
+
+            #if it == 5000:
+            #    learningRate *= 0.3
+
+            
+            delta_E.backward()#retain_graph=True)
+            
+            model.learn(learningRate)
+
+            del delta_E
+        
+
+
+
+
+        if (time.time() - timeLastSaved) > 3.0*60.0: # is storing of the model necessary?
+            # * store model to disk
+            print('store model to disk...')
+            ####model.saveToDisk('modernFastWeightProgrammerEmath.pth')
+            model.saveModel('modernFastWeightProgrammerEmath.pth', 0, None)
+            print('...done')
+
+            timeLastSaved = time.time()
+
+        """
+        # * test set
+        if it > 0 and (it % 100) == 0  and len(tokensOfTestFiles) > 0:
+            print('compute test set...')
+
+            model.resetInternalState()
+
+            delta_E = torch.tensor([[0.0]])
+            delta_E = delta_E.cuda()
+
+            usedTestsetTokensOfTestSamples = tokensOfTestFiles
+
+            dataIdx = random.randint(0, len(usedTestsetTokensOfTestSamples)-1) # index in data selection
+            tokens = usedTestsetTokensOfTestSamples[dataIdx] # select tokens of random input file
+            
+            # iterate over token and feed stimulus into NN
+
+            textAlreadyPredicted = '' # 
+
+            for iTokenIdx in range(len(tokens)-4):
+                
+                currentTokenArr = []
+                for idx in range(4):
+                    currentTokenArr.append( tokens[iTokenIdx+idx] )
+                predictedToken = tokens[iTokenIdx+4]
+                
+                xTensor0 = vectorsByInputToken[currentTokenArr[0]] * 0.1
+                xTensor1 = vectorsByInputToken[currentTokenArr[1]] * 0.1
+                xTensor2 = vectorsByInputToken[currentTokenArr[2]] * 0.1
+                xTensor3 = vectorsByInputToken[currentTokenArr[3]] * 0.1
+                
+                xTensor = torch.concat((xTensor0,xTensor1,xTensor2,xTensor3))
+                xTensor = xTensor.cuda()
+                yTargetTensor = vectorsByInputToken[predictedToken] * 0.1
+                yTargetTensor = yTargetTensor.cuda()
+                
+                yTensor = model.forward(xTensor)
+                #print('y='+str(yTensor)) # DBG
+
+                #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum() # update loss function
+
+                yTensor = torch.nn.functional.softmax(yTensor) # softmax to compute probabilities
+                delta_E = delta_E + (1.0 - yTensor[predictedToken])
+
+                ###
+                #### find best vector which matches best
+                ###if True:
+                ###    bestIdx = 0
+                ###    bestSim = -1.0
+                ###    idx = 0
+                ###    for iVec in vectorsByInputToken:
+                ###        thisSim = torch.nn.CosineSimilarity(dim=-1)(yTensor, iVec)
+                ###        if thisSim > bestSim:
+                ###            bestSim = thisSim
+                ###            bestIdx = idx
+                ###        idx+=1
+                ###    
+                ###    simToCorrectPredictionVec = torch.nn.CosineSimilarity(dim=-1)(yTensor, yTargetTensor) # similarity to correct prediction vector
+                ###    
+                ###    tempVal0 = textAlreadyPredicted.replace('\n', '\\n')
+                ###    logger.write(f'before={tempVal0}?    decoded predicted correctly={bestIdx==predictedToken}    simToCorrectPredVec={simToCorrectPredictionVec}')
+
+                textAlreadyPredicted += retLetterByTokenId(predictedToken)
+
+
+
+            
+            
+            print('... done')
+
+            lossVal = delta_E.item()
+            logger.write(f'testLoss={lossVal:.6f}     wallclockTime={time.time()-wallclockStart:.1f} it={it}')
+        """
     
-    model.learn(learningRate)
 
-    del delta_E
-
-
-    # * test set
-    if it > 0 and (it % 100) == 0  and len(tokensOfTestFiles) > 0:
-        print('compute test set...')
-
-        model.resetInternalState()
-
-        delta_E = torch.tensor([[0.0]])
-        delta_E = delta_E.cuda()
-
-        usedTestsetTokensOfTestSamples = tokensOfTestFiles
-
-        dataIdx = random.randint(0, len(usedTestsetTokensOfTestSamples)-1) # index in data selection
-        tokens = usedTestsetTokensOfTestSamples[dataIdx] # select tokens of random input file
-        
-        # iterate over token and feed stimulus into NN
-
-        textAlreadyPredicted = '' # 
-
-        for iTokenIdx in range(len(tokens)-4):
-            
-            currentTokenArr = []
-            for idx in range(4):
-                currentTokenArr.append( tokens[iTokenIdx+idx] )
-            predictedToken = tokens[iTokenIdx+4]
-            
-            xTensor0 = vectorsByInputToken[currentTokenArr[0]] * 0.1
-            xTensor1 = vectorsByInputToken[currentTokenArr[1]] * 0.1
-            xTensor2 = vectorsByInputToken[currentTokenArr[2]] * 0.1
-            xTensor3 = vectorsByInputToken[currentTokenArr[3]] * 0.1
-            
-            xTensor = torch.concat((xTensor0,xTensor1,xTensor2,xTensor3))
-            xTensor = xTensor.cuda()
-            yTargetTensor = vectorsByInputToken[predictedToken] * 0.1
-            yTargetTensor = yTargetTensor.cuda()
-            
-            yTensor = model.forward(xTensor)
-            #print('y='+str(yTensor)) # DBG
-
-            #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum() # update loss function
-
-            yTensor = torch.nn.functional.softmax(yTensor) # softmax to compute probabilities
-            delta_E = delta_E + (1.0 - yTensor[predictedToken])
-
-            ###
-            #### find best vector which matches best
-            ###if True:
-            ###    bestIdx = 0
-            ###    bestSim = -1.0
-            ###    idx = 0
-            ###    for iVec in vectorsByInputToken:
-            ###        thisSim = torch.nn.CosineSimilarity(dim=-1)(yTensor, iVec)
-            ###        if thisSim > bestSim:
-            ###            bestSim = thisSim
-            ###            bestIdx = idx
-            ###        idx+=1
-            ###    
-            ###    simToCorrectPredictionVec = torch.nn.CosineSimilarity(dim=-1)(yTensor, yTargetTensor) # similarity to correct prediction vector
-            ###    
-            ###    tempVal0 = textAlreadyPredicted.replace('\n', '\\n')
-            ###    logger.write(f'before={tempVal0}?    decoded predicted correctly={bestIdx==predictedToken}    simToCorrectPredVec={simToCorrectPredictionVec}')
-
-            textAlreadyPredicted += retLetterByTokenId(predictedToken)
-
-
-
-        
-        
-        print('... done')
-
-        lossVal = delta_E.item()
-        logger.write(f'testLoss={lossVal:.6f}     wallclockTime={time.time()-wallclockStart:.1f} it={it}')
-        
-
-print("info: finished")
+    print("info: finished")
 
 
 
 
 
-
-# TODO MID< use storing >
-
-# TODO LOW< implement code to load model from file with "loadFromDisk(self, filepath)" >
 
