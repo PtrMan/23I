@@ -190,7 +190,7 @@ import math
 
 def clampGradients(grad):
     # 0.2 works in the small test with two training files
-    clampVal = 0.2 # 0.07 # 0.2 # 7.0 # 0.1 # 0.6 #0.1
+    clampVal = 0.07 # 0.2 # 0.07 # 0.2 # 7.0 # 0.1 # 0.6 #0.1
     return torch.clamp(grad, min=-clampVal, max=clampVal)
 
 
@@ -198,12 +198,14 @@ class FastNn(torch.nn.Module):
     def __init__(self, inputSize, hiddenSize, outputSize):
         super().__init__()
         
-        self.fc1_weight = torch.randn(inputSize, hiddenSize) * 0.02 #, requires_grad=True)
+        self.fc1_weight = torch.randn(inputSize, hiddenSize) * 0.02  # TODO : null init
+        torch.nn.init.kaiming_uniform_(self.fc1_weight)
         self.fc1_weight = self.fc1_weight.cuda()
         self.fc1_bias = torch.zeros(hiddenSize, requires_grad=True)
         self.fc1_bias = self.fc1_bias.cuda()
 
-        self.fc2_weight = torch.randn(hiddenSize, outputSize, requires_grad=True) * 0.02
+        self.fc2_weight = torch.randn(hiddenSize, outputSize, requires_grad=True) * 0.02 # TODO : null init
+        #torch.nn.init.kaiming_uniform_(self.fc2_weight)
         self.fc2_weight = self.fc2_weight.cuda()
         self.fc2_bias = torch.zeros(outputSize, requires_grad=True)
         self.fc2_bias = self.fc2_bias.cuda()
@@ -300,6 +302,11 @@ class FwpLayer(torch.nn.Module):
         # small big NN
         self.rnnHiddenstateSize = 160
         self.fastNnHiddensize = 200
+
+
+        # bigger NN
+        self.rnnHiddenstateSize = 190
+        self.fastNnHiddensize = 250
     
     # builds the NN from the sizes etc.
     def build(self):
@@ -585,14 +592,12 @@ class FwpNn(torch.nn.Module):
         super().__init__()
         
         ###self.sizeInput = 0
-        
-        #self.sizeNumPredictedSymbols = 0
 
         self.sizeVocab = 0 # number of symbols in the vocabularity
         
-        self.sizeEmbedding = 110 # dimension of the embedding
+        self.sizeEmbedding = 260 # dimension of the embedding
 
-        self.sizeCrossbar = 220
+        self.sizeCrossbar = 320
         
         self.nLayers = 1
 
@@ -673,7 +678,6 @@ class FwpNn(torch.nn.Module):
         
         # logit head
         self.logitHead = LogitHeadA()
-        #self.logitHead.init(self.sizeCrossbar, self.sizeNumPredictedSymbols)
         self.logitHead.init(self.sizeCrossbar, self.sizeVocab)
 
     ###def forward(self, x):    
@@ -806,7 +810,7 @@ if __name__ == '__main__':
 
     CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/txtForPrototypingA'
 
-    MAX_SEQ_LEN = 8
+    MAX_SEQ_LEN = 16
     BATCH_SIZE = 1
 
 
@@ -881,6 +885,10 @@ if __name__ == '__main__':
         print(f"Directory '{CORPUS_DIRECTORY}' not found. No data loaded.")
 
 
+    # make text short
+    # FOR PROTOTYPING!!!
+    all_texts = all_texts[:5000]
+
     # --- Dataset and DataLoader ---
     train_dataset = TextDataset(all_texts, tokenizer, max_length=MAX_SEQ_LEN)
 
@@ -900,19 +908,16 @@ if __name__ == '__main__':
 
     ####model.outputSize = len(d0) # output size of the NN is the number of symbols
 
-    model.sizeInput = 4*22
+    ####model.sizeInput = 4*22
 
     model.nLayers = 2
-
-    model.sizeNumPredictedSymbols = len(d0) # output size of the NN is the number of symbols
 
     model.sizeVocab = VOCAB_SIZE
 
     model.build() # build the NN
 
 
-    xStimulusArr = [torch.randn(model.sizeInput), torch.randn(model.sizeInput), torch.randn(model.sizeInput)]
-    xStimulusArr = [torch.randn(10)]
+    #xStimulusArr = [torch.randn(10)]
 
     ###yTarget = torch.randn(10)
 
@@ -935,6 +940,8 @@ if __name__ == '__main__':
 
     learningRate = 0.0002
 
+
+    # for PROTOTYPING!!!
     learningRate = 0.00005
 
     errorByDataIdx = {}
@@ -1026,15 +1033,18 @@ if __name__ == '__main__':
 
                 # IMPORTANT: use log softmax
                 yTensor3 = torch.nn.functional.log_softmax(yTensor2)
-                
+                #yTensor3 = yTensor2
+
                 lossCrossEntropy = torch.nn.functional.cross_entropy(yTensor3, target)
                 delta_E = delta_E + lossCrossEntropy
 
 
 
-                yTensor4 = torch.nn.functional.softmax(yTensor2)
-                lossCrossEntropy2 = torch.nn.functional.cross_entropy(yTensor4, target)
-                print(lossCrossEntropy2)
+                #yTensor4 = torch.nn.functional.softmax(yTensor2)
+                #lossCrossEntropy2 = torch.nn.functional.cross_entropy(yTensor4, target)
+                #print(lossCrossEntropy2)
+
+                print(lossCrossEntropy)
                 #delta_E = delta_E + lossCrossEntropy2
 
                 #print('loss of prediction (cross entropy)=') # DBG
