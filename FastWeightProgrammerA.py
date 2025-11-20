@@ -323,7 +323,7 @@ class FwpLayer(torch.nn.Module):
 
         # RNN
 
-        self.rnnWeightMatrix = torch.randn(self.rnnHiddenstateSize, self.rnnHiddenstateSize+self.inputSize) * 0.02 # not learned!!!
+        self.rnnWeightMatrix = torch.randn(self.rnnHiddenstateSize, self.rnnHiddenstateSize+self.inputSize) * 0.002 # 0.02 # not learned!!!
         self.rnnWeightMatrix = self.rnnWeightMatrix.cuda()
         self.rnnBiasVector = torch.randn(self.rnnHiddenstateSize) * 0.02 # not learned!!!
         self.rnnBiasVector = self.rnnBiasVector.cuda()
@@ -451,6 +451,9 @@ class FwpLayer(torch.nn.Module):
     
     def learn(self, learningRate):
         
+
+        # the RNN has a own learning rate
+        learningRateOfRnn = 0.00002
         
         # commented because it is not anymore learned
         ##if self.rnnInitialHiddenstate.grad is not None: # can be None
@@ -460,7 +463,7 @@ class FwpLayer(torch.nn.Module):
         for idx in range(len(self.ffnnWeightupdateCalcWeightMatrixTrace)):
             # compute learning rate of each trace item
             # we spread the learning-rate over the trace items to make it more fair
-            lr2 = ( learningRate/len(self.ffnnWeightupdateCalcWeightMatrixTrace) ) * 1.0
+            lr2 = ( learningRateOfRnn/len(self.ffnnWeightupdateCalcWeightMatrixTrace) ) * 1.0
 
             if self.ffnnWeightupdateCalcWeightMatrixTrace[idx].grad is not None: # check because it can be None
                 #print('update weightUpdate') # DBG
@@ -1033,19 +1036,21 @@ if __name__ == '__main__':
 
                 # IMPORTANT: use log softmax
                 yTensor3 = torch.nn.functional.log_softmax(yTensor2)
-                #yTensor3 = yTensor2
+                #yTensor3 = torch.nn.functional.softmax(yTensor2)
+                #yTensor3 = yTensor2 # optimizes
 
                 lossCrossEntropy = torch.nn.functional.cross_entropy(yTensor3, target)
                 delta_E = delta_E + lossCrossEntropy
+                print(lossCrossEntropy)
 
 
-
-                #yTensor4 = torch.nn.functional.softmax(yTensor2)
-                #lossCrossEntropy2 = torch.nn.functional.cross_entropy(yTensor4, target)
+                yTensor4 = torch.nn.functional.softmax(yTensor2)
+                #yTensor4 = yTensor3
+                lossCrossEntropy2 = torch.nn.functional.cross_entropy(yTensor4, target)
                 #print(lossCrossEntropy2)
 
-                print(lossCrossEntropy)
-                #delta_E = delta_E + lossCrossEntropy2
+                #print(lossCrossEntropy)
+                
 
                 #print('loss of prediction (cross entropy)=') # DBG
                 #print(lossCrossEntropy) # DBG
