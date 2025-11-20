@@ -813,7 +813,7 @@ if __name__ == '__main__':
 
     CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/txtForPrototypingA'
 
-    MAX_SEQ_LEN = 16
+    MAX_SEQ_LEN = 24
     BATCH_SIZE = 1
 
 
@@ -890,7 +890,7 @@ if __name__ == '__main__':
 
     # make text short
     # FOR PROTOTYPING!!!
-    all_texts = all_texts[:5000]
+    #all_texts = all_texts[:25000]
 
     # --- Dataset and DataLoader ---
     train_dataset = TextDataset(all_texts, tokenizer, max_length=MAX_SEQ_LEN)
@@ -1129,10 +1129,17 @@ if __name__ == '__main__':
 
 
         if (time.time() - timeLastSaved) > 3.0*60.0: # is storing of the model necessary?
+
+            # small PROTOTYPING model
+            #pathModelDest = 'modernFastWeightProgrammerEmath.pth'
+
+            pathModelDest = 'modernFastWeightProgrammer__plnA.pth'
+            
+
             # * store model to disk
             print('store model to disk...')
             ####model.saveToDisk('modernFastWeightProgrammerEmath.pth')
-            model.saveModel('modernFastWeightProgrammerEmath.pth', 0, None)
+            model.saveModel(pathModelDest, 0, None)
             print('...done')
 
             timeLastSaved = time.time()
