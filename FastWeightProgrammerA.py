@@ -324,9 +324,17 @@ class FwpLayer(torch.nn.Module):
         # RNN
 
         self.rnnWeightMatrix = torch.randn(self.rnnHiddenstateSize, self.rnnHiddenstateSize+self.inputSize) * 0.002 # 0.02 # not learned!!!
+        
+        # init with normal distribution
+        #sizeIn = self.rnnHiddenstateSize+self.inputSize
+        torch.nn.init.normal_(self.rnnWeightMatrix, mean=0.0, std=0.001) # std=1/math.sqrt(sizeIn))
+        
         self.rnnWeightMatrix = self.rnnWeightMatrix.cuda()
-        self.rnnBiasVector = torch.randn(self.rnnHiddenstateSize) * 0.02 # not learned!!!
+        
+        #self.rnnBiasVector = torch.randn(self.rnnHiddenstateSize) * 0.02 # not learned!!!
+        self.rnnBiasVector = torch.zeros(self.rnnHiddenstateSize)
         self.rnnBiasVector = self.rnnBiasVector.cuda()
+        
         self.rnnInitialHiddenstate = torch.randn(self.rnnHiddenstateSize) * 0.0005 # not learned!!! (because the gradients vanish to zero if it would be learned)
         self.rnnInitialHiddenstate = self.rnnInitialHiddenstate.cuda()
 
@@ -400,6 +408,10 @@ class FwpLayer(torch.nn.Module):
         tanhActivation = torch.tanh(linearCombinationRnn) # Apply the Tanh activation function
 
 
+        # NORMALIZE here for >>stable training<<
+        tanhActivation = torch.nn.functional.normalize(tanhActivation, dim=0)
+
+
         #print(tanh_activation) # DBG level 1
 
         #input_tensor = torch.concat((tanh_activation, sin_activation))
@@ -453,7 +465,10 @@ class FwpLayer(torch.nn.Module):
         
 
         # the RNN has a own learning rate
-        learningRateOfRnn = 0.00002
+        learningRateOfRnn = 0.00002 # maybe to high for RNN
+        learningRateOfRnn = 0.00015
+
+        learningRateOfRnn = 0.0005
         
         # commented because it is not anymore learned
         ##if self.rnnInitialHiddenstate.grad is not None: # can be None
@@ -696,6 +711,10 @@ class FwpNn(torch.nn.Module):
 
             nnOut = itLayer.forward(crossbar)
             crossbar = crossbar + nnOut # skip connection
+
+            # NORMALIZE here for >>stable training<<
+            # we normalize the complete crossbar instead of nnOut, because nnOut can be small (especially in the beginning)
+            crossbar = torch.nn.functional.normalize(crossbar, dim=0)
         
         
         logitheadOut = self.logitHead.forward(crossbar)
@@ -813,8 +832,10 @@ if __name__ == '__main__':
 
     CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/txtForPrototypingA'
 
-    MAX_SEQ_LEN = 24
+    lengthOfContext = 24
     BATCH_SIZE = 1
+
+    lengthOfFragment = 12000 # how long is the fragment for training?
 
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -893,7 +914,7 @@ if __name__ == '__main__':
     #all_texts = all_texts[:25000]
 
     # --- Dataset and DataLoader ---
-    train_dataset = TextDataset(all_texts, tokenizer, max_length=MAX_SEQ_LEN)
+    train_dataset = TextDataset(all_texts, tokenizer, max_length=lengthOfFragment)
 
     if len(train_dataset) == 0:
         print("ERROR: Created dataset is empty. Cannot train. Check data sources and tokenization.")
@@ -945,7 +966,11 @@ if __name__ == '__main__':
 
 
     # for PROTOTYPING!!!
-    learningRate = 0.00005
+    learningRate = 0.00005 # probably to high for RNN
+
+    learningRate = 0.00003
+
+    learningRate = 0.0005
 
     errorByDataIdx = {}
 
@@ -986,7 +1011,14 @@ if __name__ == '__main__':
             ###dataIdx = random.randint(0, len(tokensOfTrainingFiles)-1) # index in training data selection
             ###tokens = tokensOfTrainingFiles[dataIdx] # select tokens of random input file
             
-            tokens = input_ids[0].tolist()
+            selFragmentTokens = input_ids[0].tolist()  # fetch tokens of complete fragment
+
+            selStartIdx = random.randint(0, len(selFragmentTokens)-1-lengthOfContext)
+
+            ####tokens = selFragmentTokens
+            tokens = selFragmentTokens[selStartIdx:selStartIdx+lengthOfContext]
+
+            
 
             #print('tokens to train:')
             #print(tokens)
@@ -1036,6 +1068,7 @@ if __name__ == '__main__':
 
                 # IMPORTANT: use log softmax
                 yTensor3 = torch.nn.functional.log_softmax(yTensor2)
+
                 #yTensor3 = torch.nn.functional.softmax(yTensor2)
                 #yTensor3 = yTensor2 # optimizes
 
@@ -1133,8 +1166,12 @@ if __name__ == '__main__':
             # small PROTOTYPING model
             #pathModelDest = 'modernFastWeightProgrammerEmath.pth'
 
+            # trained to low loss (with old chunking algo)
             pathModelDest = 'modernFastWeightProgrammer__plnA.pth'
-            
+
+            # (with new chunking algo)
+            pathModelDest = 'modernFastWeightProgrammer__plnB.pth'
+
 
             # * store model to disk
             print('store model to disk...')
