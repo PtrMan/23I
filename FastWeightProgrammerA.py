@@ -201,18 +201,23 @@ class FastNn(torch.nn.Module):
         self.fc1_weight = torch.randn(inputSize, hiddenSize) * 0.02  # TODO : null init
         torch.nn.init.kaiming_uniform_(self.fc1_weight)
         self.fc1_weight = self.fc1_weight.cuda()
+        self.fc1_weight = torch.nn.Parameter(self.fc1_weight)
         self.fc1_bias = torch.zeros(hiddenSize, requires_grad=True)
         self.fc1_bias = self.fc1_bias.cuda()
+        self.fc1_bias = torch.nn.Parameter(self.fc1_bias)
 
         self.fc2_weight = torch.randn(hiddenSize, outputSize, requires_grad=True) * 0.02 # TODO : null init
         #torch.nn.init.kaiming_uniform_(self.fc2_weight)
         self.fc2_weight = self.fc2_weight.cuda()
+        self.fc2_weight = torch.nn.Parameter(self.fc2_weight)
         self.fc2_bias = torch.zeros(outputSize, requires_grad=True)
         self.fc2_bias = self.fc2_bias.cuda()
+        self.fc2_bias = torch.nn.Parameter(self.fc2_bias)
 
         # init weights for restoring
         self.fc1_weightInitial = self.fc1_weight.clone()
         self.fc1_weightInitial = self.fc1_weightInitial.cuda()
+        self.fc1_weightInitial = torch.nn.Parameter(self.fc1_weightInitial)
     
     def forward(self, x):
         x = x @ self.fc1_weight + self.fc1_bias
@@ -224,17 +229,17 @@ class FastNn(torch.nn.Module):
 
         #self.ffnnFastNnWeightMatrixInitial = self.ffnnFastNnWeightMatrixInitial.detach()
         #self.ffnnFastNnWeightMatrixInitial.requires_grad_()
-        self.fc1_weightInitial = self.fc1_weightInitial.detach()
+        self.fc1_weightInitial = torch.nn.Parameter(self.fc1_weightInitial.detach())
         self.fc1_weightInitial.requires_grad_()
 
         #self.ffnnFastNnBias = self.ffnnFastNnBias.detach()
         #self.ffnnFastNnBias.requires_grad_()
-        self.fc1_bias = self.fc1_bias.detach()
+        self.fc1_bias = torch.nn.Parameter(self.fc1_bias.detach())
         self.fc1_bias.requires_grad_()
 
-        self.fc2_weight = self.fc2_weight.detach()
+        self.fc2_weight = torch.nn.Parameter(self.fc2_weight.detach())
         self.fc2_weight.requires_grad_()
-        self.fc2_bias = self.fc2_bias.detach()
+        self.fc2_bias = torch.nn.Parameter(self.fc2_bias.detach())
         self.fc2_bias.requires_grad_()
 
 
@@ -245,11 +250,11 @@ class FastNn(torch.nn.Module):
         self.fc1_weight = self.fc1_weightInitial
     
     def learn(self, learningRate):
-        self.fc1_weightInitial = self.fc1_weightInitial - clampGradients(self.fc1_weightInitial.grad)*learningRate
-        self.fc1_bias = self.fc1_bias - clampGradients(self.fc1_bias.grad)*learningRate
+        self.fc1_weightInitial.data = self.fc1_weightInitial.data - clampGradients(self.fc1_weightInitial.grad)*learningRate
+        self.fc1_bias.data = self.fc1_bias.data - clampGradients(self.fc1_bias.grad)*learningRate
 
-        self.fc2_weight = self.fc2_weight - clampGradients(self.fc2_weight.grad)*learningRate
-        self.fc2_bias = self.fc2_bias - clampGradients(self.fc2_bias.grad)*learningRate
+        self.fc2_weight.data = self.fc2_weight.data - clampGradients(self.fc2_weight.grad)*learningRate
+        self.fc2_bias.data = self.fc2_bias.data - clampGradients(self.fc2_bias.grad)*learningRate
     
     def updateWeights(self, deltaVector):
         # debug
@@ -270,8 +275,8 @@ class FastNn(torch.nn.Module):
             #print(deltaBMatrix)
 
         # compute actual update of weights
-        self.fc1_weight = self.fc1_weight + deltaAMatrix
-        #self.fc2_weight = self.fc2_weight + deltaBMatrix
+        self.fc1_weight.data = self.fc1_weight.data + deltaAMatrix
+        #self.fc2_weight.data = self.fc2_weight.data + deltaBMatrix
 
 
 # layer for "fast weight programmer"
@@ -330,14 +335,16 @@ class FwpLayer(torch.nn.Module):
         torch.nn.init.normal_(self.rnnWeightMatrix, mean=0.0, std=0.001) # std=1/math.sqrt(sizeIn))
         
         self.rnnWeightMatrix = self.rnnWeightMatrix.cuda()
+        self.rnnWeightMatrix = torch.nn.Parameter(self.rnnWeightMatrix)
         
         #self.rnnBiasVector = torch.randn(self.rnnHiddenstateSize) * 0.02 # not learned!!!
         self.rnnBiasVector = torch.zeros(self.rnnHiddenstateSize)
         self.rnnBiasVector = self.rnnBiasVector.cuda()
+        self.rnnBiasVector = torch.nn.Parameter(self.rnnBiasVector, requires_grad=True)
         
         self.rnnInitialHiddenstate = torch.randn(self.rnnHiddenstateSize) * 0.0005 # not learned!!! (because the gradients vanish to zero if it would be learned)
         self.rnnInitialHiddenstate = self.rnnInitialHiddenstate.cuda()
-
+        self.rnnInitialHiddenstate = torch.nn.Parameter(self.rnnInitialHiddenstate, requires_grad=False)
 
 
 
@@ -346,9 +353,10 @@ class FwpLayer(torch.nn.Module):
         print(f'FFNN weight update output_size={weightUpdateOutputSize}')
         self.ffnnWeightupdateCalcWeightMatrix = torch.randn(weightUpdateOutputSize, self.rnnHiddenstateSize) * 0.05 
         self.ffnnWeightupdateCalcWeightMatrix = self.ffnnWeightupdateCalcWeightMatrix.cuda()
+        self.ffnnWeightupdateCalcWeightMatrix = torch.nn.Parameter(self.ffnnWeightupdateCalcWeightMatrix)
         self.ffnnWeightupdateCalcBias = torch.randn(weightUpdateOutputSize) * 0.05
         self.ffnnWeightupdateCalcBias = self.ffnnWeightupdateCalcBias.cuda()
-        
+        self.ffnnWeightupdateCalcBias = torch.nn.Parameter(self.ffnnWeightupdateCalcBias)
         
 
 
@@ -360,20 +368,20 @@ class FwpLayer(torch.nn.Module):
     def resetInternalState(self):
         self.fastNn.resetInternalState()
 
-        self.rnnHiddenstate = self.rnnInitialHiddenstate
+        self.rnnHiddenstate = self.rnnInitialHiddenstate.detach()
 
 
     def reset(self):
-        self.rnnWeightMatrix = self.rnnWeightMatrix.detach()
-        self.rnnBiasVector = self.rnnBiasVector.detach()
+        self.rnnWeightMatrix = torch.nn.Parameter(self.rnnWeightMatrix.detach())
+        self.rnnBiasVector = torch.nn.Parameter(self.rnnBiasVector.detach())
         
-        self.rnnInitialHiddenstate = self.rnnInitialHiddenstate.detach()
+        self.rnnInitialHiddenstate = torch.nn.Parameter(self.rnnInitialHiddenstate.detach())
         ####self.rnnInitialHiddenstate.requires_grad_()
         
-        self.ffnnWeightupdateCalcWeightMatrix = self.ffnnWeightupdateCalcWeightMatrix.detach()
+        self.ffnnWeightupdateCalcWeightMatrix = torch.nn.Parameter(self.ffnnWeightupdateCalcWeightMatrix.detach())
         self.ffnnWeightupdateCalcWeightMatrix.requires_grad_()
         
-        self.ffnnWeightupdateCalcBias = self.ffnnWeightupdateCalcBias.detach()
+        self.ffnnWeightupdateCalcBias = torch.nn.Parameter(self.ffnnWeightupdateCalcBias.detach())
         self.ffnnWeightupdateCalcBias.requires_grad_()
         
 
@@ -783,10 +791,10 @@ class TextDataset(Dataset):
         print("Tokenizing and chunking data...")
         for text in texts:
             if not text: continue # Skip empty lines
-            tokenized_text = tokenizer.encode(text, add_special_tokens=False)
+            tokens = tokenizer.encode(text, add_special_tokens=False)
             # Chunk into sequences of max_length
-            for i in range(0, len(tokenized_text) - 1, max_length): # -1 because target is shifted
-                chunk = tokenized_text[i : i + max_length + 1] # Get one extra token for target
+            for i in range(0, len(tokens) - 1, max_length): # -1 because target is shifted
+                chunk = tokens[i : i + max_length + 1] # Get one extra token for target
                 if len(chunk) < 2: continue # Need at least one input and one target
 
                 input_chunk = chunk[:-1]
@@ -827,15 +835,139 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer # Use AutoTokenizer for flexibility
 
 
+
+class Completion(object):
+    def __init__(self):
+        pass
+    
+    # /param cntPredictTokens how many tokens to predict?  is in training mode if it is == 0
+    def processTokens(self, model, tokens, cntPredictTokens):
+
+        isTrainingMode = cntPredictTokens == 0
+
+        tokens2 = tokens[:]
+
+
+        loss = torch.tensor([[0.0]])
+        loss = loss.cuda()
+        
+        cntDat = 0
+
+        model.reset()
+        model.resetInternalState()
+
+        # iterate over token and feed stimulus into NN
+        for iTokenIdx in range(len(tokens)+cntPredictTokens-4):
+            
+            cntDat += 1
+
+            
+            currentTokenArr = []
+            for idx in range(4):
+                currentTokenArr.append( tokens2[iTokenIdx+idx] )
+
+            #print(currentTokenArr) # DBG
+
+            inputIds = currentTokenArr
+            inputIds = torch.tensor(inputIds, dtype=torch.int64).cuda()
+
+
+            yTensor = model.forward(inputIds)
+
+            #print('y='+str(yTensor)) # DBG
+
+            yTensor2 = yTensor.view(1, -1) # convert to two dimensional tensor
+
+            # IMPORTANT: use log softmax
+            yTensor3 = torch.nn.functional.log_softmax(yTensor2)
+
+            
+            if isTrainingMode:
+            
+                predictedToken = tokens2[iTokenIdx+4]
+
+                # target = torch.randint(5, (3,), dtype=torch.int64)
+                target = torch.tensor([predictedToken], dtype=torch.int64).cuda()
+                
+
+                #yTensor3 = torch.nn.functional.softmax(yTensor2)
+                #yTensor3 = yTensor2 # optimizes
+
+            
+                lossCrossEntropy = torch.nn.functional.cross_entropy(yTensor3, target)
+                loss = loss + lossCrossEntropy
+                #print(lossCrossEntropy) # DBG
+
+                """
+                yTensor4 = torch.nn.functional.softmax(yTensor2)
+                #yTensor4 = yTensor3
+                lossCrossEntropy2 = torch.nn.functional.cross_entropy(yTensor4, target)
+                #print(lossCrossEntropy2)
+                """
+                
+            else:
+
+                if iTokenIdx >= len(tokens)-4: # are we predicting tokens outside of the prompt?
+
+                    # max index in vector
+                    predictedSymbol = torch.argmax(yTensor3, dim=1).tolist()[0]
+
+                    tokens2.append(predictedSymbol)
+
+
+        return {'tokens':tokens2, 'loss':loss, 'cntDat':cntDat}
+
+
+
 if __name__ == '__main__':
 
 
+    mode = 'train'
+    #mode = 'inference'
+
+
+    # small PROTOTYPING model
+    #pathModelDest = 'modernFastWeightProgrammerEmath.pth'
+
+
+
+    # for prototyping
+    pathModelDest = 'modernFastWeightProgrammer__prototypingA.pth'
+    CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/txtForPrototyingMiniA'
+
+
+
+    # (with new chunking algo)
+    pathModelDest = 'modernFastWeightProgrammer__plnB.pth'
     CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/txtForPrototypingA'
+
+    # (with new chunking algo)
+    pathModelDest = 'modernFastWeightProgrammer__mlTextA.pth'
+    CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/fullDatasetA'
+
+
+
+
+
+    # for PROTOTYPING!!!
+    learningRate = 0.00005 # probably to high for RNN
+
+    learningRate = 0.00003
+
+    # works fine with new  normalization in layers
+    learningRate = 0.0005
+
+
+
 
     lengthOfContext = 24
     BATCH_SIZE = 1
 
     lengthOfFragment = 12000 # how long is the fragment for training?
+
+
+
+
 
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -875,56 +1007,56 @@ if __name__ == '__main__':
 
 
 
+    if mode == 'train':
 
+        # --- Load Data from Directory ---
+        all_texts = []
+        if os.path.isdir(CORPUS_DIRECTORY):
+            print(f"Attempting to load text files from directory: {CORPUS_DIRECTORY}")
+            text_files = glob.glob(os.path.join(CORPUS_DIRECTORY, '*.txt'))
 
-    # --- Load Data from Directory ---
-    all_texts = []
-    if os.path.isdir(CORPUS_DIRECTORY):
-        print(f"Attempting to load text files from directory: {CORPUS_DIRECTORY}")
-        text_files = glob.glob(os.path.join(CORPUS_DIRECTORY, '*.txt'))
-
-        if not text_files:
-            print(f"Warning: No '.txt' files found in {CORPUS_DIRECTORY}.")
-        else:
-            print(f"Found {len(text_files)} '.txt' files.")
-            for file_path in text_files:
-                try:
-                    with open(file_path, "r", encoding="utf-8", errors='ignore') as f:
-                        lines = f.readlines()
-                        
-                        #lines = [line.strip() for line in lines if line.strip() and len(line) > 10] # Basic filter
-                        #all_texts.extend(lines)
-                        
-                        # fix
-                        complete = '\n'.join(lines)
-                        all_texts.append(complete)
-                except Exception as e:
-                    print(f"Error reading file {file_path}: {e}. Skipping.")
-
-            if all_texts:
-                print(f"Loaded a total of {len(all_texts)} lines from {len(text_files)} files.")
+            if not text_files:
+                print(f"Warning: No '.txt' files found in {CORPUS_DIRECTORY}.")
             else:
-                 print(f"Warning: Found {len(text_files)} files, but couldn't load any valid text lines.")
-    else:
-        print(f"Directory '{CORPUS_DIRECTORY}' not found. No data loaded.")
+                print(f"Found {len(text_files)} '.txt' files.")
+                for file_path in text_files:
+                    try:
+                        with open(file_path, "r", encoding="utf-8", errors='ignore') as f:
+                            lines = f.readlines()
+                            
+                            #lines = [line.strip() for line in lines if line.strip() and len(line) > 10] # Basic filter
+                            #all_texts.extend(lines)
+                            
+                            # fix
+                            complete = '\n'.join(lines)
+                            all_texts.append(complete)
+                    except Exception as e:
+                        print(f"Error reading file {file_path}: {e}. Skipping.")
+
+                if all_texts:
+                    print(f"Loaded a total of {len(all_texts)} lines from {len(text_files)} files.")
+                else:
+                    print(f"Warning: Found {len(text_files)} files, but couldn't load any valid text lines.")
+        else:
+            print(f"Directory '{CORPUS_DIRECTORY}' not found. No data loaded.")
 
 
-    # make text short
-    # FOR PROTOTYPING!!!
-    #all_texts = all_texts[:25000]
+        # make text short
+        # FOR PROTOTYPING!!!
+        #all_texts = all_texts[:25000]
 
-    # --- Dataset and DataLoader ---
-    train_dataset = TextDataset(all_texts, tokenizer, max_length=lengthOfFragment)
+        # --- Dataset and DataLoader ---
+        train_dataset = TextDataset(all_texts, tokenizer, max_length=lengthOfFragment)
 
-    if len(train_dataset) == 0:
-        print("ERROR: Created dataset is empty. Cannot train. Check data sources and tokenization.")
-        exit()
+        if len(train_dataset) == 0:
+            print("ERROR: Created dataset is empty. Cannot train. Check data sources and tokenization.")
+            exit()
 
-    print(f"Successfully created dataset with {len(train_dataset)} items.")
-    # Use pin_memory=True if using GPU for potentially faster data transfer
-    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
-                                  pin_memory=True if DEVICE == torch.device("cuda") else False)
-    print("DataLoader created.")
+        print(f"Successfully created dataset with {len(train_dataset)} items.")
+        # Use pin_memory=True if using GPU for potentially faster data transfer
+        train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
+                                    pin_memory=True if DEVICE == torch.device("cuda") else False)
+        print("DataLoader created.")
 
 
 
@@ -941,38 +1073,19 @@ if __name__ == '__main__':
     model.build() # build the NN
 
 
-    #xStimulusArr = [torch.randn(10)]
+    if mode != 'train': # then mode is 'inference'
 
-    ###yTarget = torch.randn(10)
+        print('[info] load model...')
 
-    learningRate = 0.000005
-    learningRate = 0.0000015
-    #learningRate = 0.000002 # works well enough down to error=~15.0 which isn't great
+        # load model
+        model.loadModel(pathModelDest)
 
-    # for unittest
-    learningRate = 0.00015 # worked very well for unittest
-    #learningRate = 0.0006
-
-    
-    #learningRate = 0.00005 / len(tokensOfTrainingFiles) # worked well with training set size 10
-    learningRate = 0.00005 # works fine for smallish sized dataset
-    learningRate = 0.00009 # experimental, seems to be to fast according to failure of convergence on simple arithmetic problem
-    learningRate = 0.00005
-
-    #learningRate = 0.00001 # experimenting for NARSESE translation task, result: learns to a low loss
+        print('[info] ...DONE')
 
 
-    learningRate = 0.0002
 
 
-    # for PROTOTYPING!!!
-    learningRate = 0.00005 # probably to high for RNN
 
-    learningRate = 0.00003
-
-    learningRate = 0.0005
-
-    errorByDataIdx = {}
 
     import time
 
@@ -981,279 +1094,304 @@ if __name__ == '__main__':
     timeLastSaved = time.time() # time of the last saving of the model to disk
 
 
-    runningLossAvg = None
+    if mode == 'train':
 
-    for it in range(500000):
-        
-        
-        dataIdx = None
-        
-        
+        runningLossAvg = None
 
-        
-        for i, batch in enumerate(train_dataloader):
-            
-            model.reset()
-            model.resetInternalState()
-            
-            delta_E = torch.tensor([[0.0]])
-            delta_E = delta_E.cuda()
+        for it in range(500000):
             
             
+            dataIdx = None
             
             
-            input_ids = batch["input_ids"].to(DEVICE)   # Shape: [batch_size, seq_len]
-            target_ids = batch["target_ids"].to(DEVICE) # Shape: [batch_size, seq_len]
-            
-            cntDat = 0
-            
-            
-            ###dataIdx = random.randint(0, len(tokensOfTrainingFiles)-1) # index in training data selection
-            ###tokens = tokensOfTrainingFiles[dataIdx] # select tokens of random input file
-            
-            selFragmentTokens = input_ids[0].tolist()  # fetch tokens of complete fragment
-
-            selStartIdx = random.randint(0, len(selFragmentTokens)-1-lengthOfContext)
-
-            ####tokens = selFragmentTokens
-            tokens = selFragmentTokens[selStartIdx:selStartIdx+lengthOfContext]
 
             
-
-            #print('tokens to train:')
-            #print(tokens)
-
-            # iterate over token and feed stimulus into NN
-            for iTokenIdx in range(len(tokens)-4):
+            for i, batch in enumerate(train_dataloader):
                 
-                cntDat += 1
+                model.reset()
+                model.resetInternalState()
+                
+                delta_E = torch.tensor([[0.0]])
+                delta_E = delta_E.cuda()
+                
+                
+                
+                
+                input_ids = batch["input_ids"].to(DEVICE)   # Shape: [batch_size, seq_len]
+                target_ids = batch["target_ids"].to(DEVICE) # Shape: [batch_size, seq_len]
+                
+                cntDat = 0
+                
+                
+                ###dataIdx = random.randint(0, len(tokensOfTrainingFiles)-1) # index in training data selection
+                ###tokens = tokensOfTrainingFiles[dataIdx] # select tokens of random input file
+                
+                selFragmentTokens = input_ids[0].tolist()  # fetch tokens of complete fragment
+
+                selStartIdx = random.randint(0, len(selFragmentTokens)-1-lengthOfContext)
+
+                ####tokens = selFragmentTokens
+                tokens = selFragmentTokens[selStartIdx:selStartIdx+lengthOfContext]
 
                 
-                currentTokenArr = []
-                for idx in range(4):
-                    currentTokenArr.append( tokens[iTokenIdx+idx] )
-                
-                predictedToken = tokens[iTokenIdx+4]
-                
-                """
-                xTensor0 = vectorsByInputToken[currentTokenArr[0]] * 0.1
-                xTensor1 = vectorsByInputToken[currentTokenArr[1]] * 0.1
-                xTensor2 = vectorsByInputToken[currentTokenArr[2]] * 0.1
-                xTensor3 = vectorsByInputToken[currentTokenArr[3]] * 0.1
-                
-                xTensor = torch.concat((xTensor0,xTensor1,xTensor2,xTensor3))
-                xTensor = xTensor.cuda()
+
+                #print('tokens to train:')
+                #print(tokens)
+
+
+
+
+                completion = Completion()
+                responseCompletion = completion.processTokens(model, tokens, 0)
+
+
                 """
 
-                ###
-                ###yTargetTensor = vectorsByInputToken[predictedToken] * 0.1
+                # iterate over token and feed stimulus into NN
+                for iTokenIdx in range(len(tokens)-4):
+                    
+                    cntDat += 1
+
+                    
+                    currentTokenArr = []
+                    for idx in range(4):
+                        currentTokenArr.append( tokens[iTokenIdx+idx] )
+                    
+                    predictedToken = tokens[iTokenIdx+4]
+                    
+
+                    ###
+                    ###yTargetTensor = vectorsByInputToken[predictedToken] * 0.1
+                    
+                    inputIds = currentTokenArr
+                    inputIds = torch.tensor(inputIds, dtype=torch.int64).cuda()
+
+                    #yTensor = model.forward(xTensor)
+                    yTensor = model.forward(inputIds)
+
+                    #print('y='+str(yTensor)) # DBG
+
+                    #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum()
+
+                    #yTargetTensor = torch.ones(model.outputSize)*1e-5
+                    #yTargetTensor[predictedToken] = 1.0
+                    #yTargetTensor = yTargetTensor.cuda()
+
+                    # target = torch.randint(5, (3,), dtype=torch.int64)
+                    target = torch.tensor([predictedToken], dtype=torch.int64).cuda()
+                    yTensor2 = yTensor.view(1, -1) # convert to two dimensional tensor
+
+                    # IMPORTANT: use log softmax
+                    yTensor3 = torch.nn.functional.log_softmax(yTensor2)
+
+                    #yTensor3 = torch.nn.functional.softmax(yTensor2)
+                    #yTensor3 = yTensor2 # optimizes
+
+                    lossCrossEntropy = torch.nn.functional.cross_entropy(yTensor3, target)
+                    delta_E = delta_E + lossCrossEntropy
+                    print(lossCrossEntropy)
+
+
+                    yTensor4 = torch.nn.functional.softmax(yTensor2)
+                    #yTensor4 = yTensor3
+                    lossCrossEntropy2 = torch.nn.functional.cross_entropy(yTensor4, target)
+                    #print(lossCrossEntropy2)
+
+                    #print(lossCrossEntropy)
+                    
+
+                    #print('loss of prediction (cross entropy)=') # DBG
+                    #print(lossCrossEntropy) # DBG
+
+                    #yTensor = torch.nn.functional.softmax(yTensor) # softmax to compute probabilities
+                    #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum()
+                    ####delta_E = delta_E + (1.0 - yTensor[predictedToken])
                 
-                inputIds = currentTokenArr
-                inputIds = torch.tensor(inputIds, dtype=torch.int64).cuda()
+                """
 
-                #yTensor = model.forward(xTensor)
-                yTensor = model.forward(inputIds)
+                loss = responseCompletion['loss']
+                cntDat = responseCompletion['cntDat']
+                
+                # * weight decay
+                enableWeightDecay = False
 
-                #print('y='+str(yTensor)) # DBG
+                if enableWeightDecay:
+                    weightDecay = 0.0001 # maybe 0.1 is good,    set to 0.0 to disable weight decay!
+                    loss = loss + weightDecay*model.calcWeightMag()
 
-                #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum()
-
-                #yTargetTensor = torch.ones(model.outputSize)*1e-5
-                #yTargetTensor[predictedToken] = 1.0
-                #yTargetTensor = yTargetTensor.cuda()
-
-                # target = torch.randint(5, (3,), dtype=torch.int64)
-                target = torch.tensor([predictedToken], dtype=torch.int64).cuda()
-                yTensor2 = yTensor.view(1, -1) # convert to two dimensional tensor
-
-                # IMPORTANT: use log softmax
-                yTensor3 = torch.nn.functional.log_softmax(yTensor2)
-
-                #yTensor3 = torch.nn.functional.softmax(yTensor2)
-                #yTensor3 = yTensor2 # optimizes
-
-                lossCrossEntropy = torch.nn.functional.cross_entropy(yTensor3, target)
-                delta_E = delta_E + lossCrossEntropy
-                print(lossCrossEntropy)
-
-
-                yTensor4 = torch.nn.functional.softmax(yTensor2)
-                #yTensor4 = yTensor3
-                lossCrossEntropy2 = torch.nn.functional.cross_entropy(yTensor4, target)
-                #print(lossCrossEntropy2)
-
-                #print(lossCrossEntropy)
                 
 
-                #print('loss of prediction (cross entropy)=') # DBG
-                #print(lossCrossEntropy) # DBG
 
-                #yTensor = torch.nn.functional.softmax(yTensor) # softmax to compute probabilities
-                #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum()
-                ####delta_E = delta_E + (1.0 - yTensor[predictedToken])
+                if runningLossAvg is None:
+                    runningLossAvg = (loss.item() / cntDat)
+
+                lossAvgFactor = 0.002
+                runningLossAvg = runningLossAvg * (1.0-lossAvgFactor) + (loss.item() / cntDat)*lossAvgFactor
+
+
+                if True and (it % 1) == 0:
+                    #print('y='+str(yTensor)) # DBG
+                    
+                    lossVal = loss.item() / cntDat
+                    print('')
+                    print(f'trainingLoss={lossVal:.6f} dataIdx={dataIdx} lr={learningRate}     wallclockTime={time.time()-wallclockStart:.1f} it={it}')
+                    print(f'avgTrainingLoss={runningLossAvg:.6f}')
+
+                    #print(f'training {nCorrect}/{nCnt} = {nCorrect/nCnt}')
+
+                """
+                if (it % 300) == 0:
+                    # debug error by dataindex
+
+                    # debug loss by training data
+                    print('debug error by training data (calculate start)')
+
+                    logger.write('')
+                    logger.write(f'it={it} lr={learningRate} wallclockTime={time.time()-wallclockStart:.1f}')
+                    for iDataIdx in range(len(tokensOfTrainingFiles)):
+                        if iDataIdx in errorByDataIdx:
+                            logger.write(f'training loss by data[{iDataIdx}] trainingLoss={errorByDataIdx[iDataIdx]}')
+                    
+                    # compute sum for convinience
+                    lossOfAllSamples = 0.0
+                    for iDataIdx in range(len(tokensOfTrainingFiles)):
+                        if iDataIdx in errorByDataIdx:
+                            lossOfAllSamples += errorByDataIdx[iDataIdx]
+                    logger.write(f'sum of training loss by data   sumTrainingLoss={lossOfAllSamples}')
+
+                    print('debug error by training data (calculate finished)')
+                """
                 
 
+                #if it == 5000:
+                #    learningRate *= 0.3
+
+                
+                loss.backward()#retain_graph=True)
+                
+                model.learn(learningRate)
+
+                del loss
             
-            # * weight decay
-            enableWeightDecay = False
-
-            if enableWeightDecay:
-                weightDecay = 0.0001 # maybe 0.1 is good,    set to 0.0 to disable weight decay!
-                delta_E = delta_E + weightDecay*model.calcWeightMag()
-
-            
-
-            ####errorByDataIdx[dataIdx] = delta_E.item() # keep track of error by data index
-            
-
-            if runningLossAvg is None:
-                runningLossAvg = (delta_E.item() / cntDat)
-
-            lossAvgFactor = 0.002
-            runningLossAvg = runningLossAvg * (1.0-lossAvgFactor) + (delta_E.item() / cntDat)*lossAvgFactor
 
 
-            if True and (it % 1) == 0:
-                #print('y='+str(yTensor)) # DBG
-                
-                lossVal = delta_E.item() / cntDat
-                print('')
-                print(f'trainingLoss={lossVal:.6f} dataIdx={dataIdx} lr={learningRate}     wallclockTime={time.time()-wallclockStart:.1f} it={it}')
-                print(f'avgTrainingLoss={runningLossAvg:.6f}')
 
-                #print(f'training {nCorrect}/{nCnt} = {nCorrect/nCnt}')
+
+            if (time.time() - timeLastSaved) > 3.0*60.0: # is storing of the model necessary?
+
+
+                # * store model to disk
+                print('store model to disk...')
+                ####model.saveToDisk('modernFastWeightProgrammerEmath.pth')
+                model.saveModel(pathModelDest, 0, None)
+                print('...done')
+
+                timeLastSaved = time.time()
 
             """
-            if (it % 300) == 0:
-                # debug error by dataindex
+            # * test set
+            if it > 0 and (it % 100) == 0  and len(tokensOfTestFiles) > 0:
+                print('compute test set...')
 
-                # debug loss by training data
-                print('debug error by training data (calculate start)')
+                model.resetInternalState()
 
-                logger.write('')
-                logger.write(f'it={it} lr={learningRate} wallclockTime={time.time()-wallclockStart:.1f}')
-                for iDataIdx in range(len(tokensOfTrainingFiles)):
-                    if iDataIdx in errorByDataIdx:
-                        logger.write(f'training loss by data[{iDataIdx}] trainingLoss={errorByDataIdx[iDataIdx]}')
+                delta_E = torch.tensor([[0.0]])
+                delta_E = delta_E.cuda()
+
+                usedTestsetTokensOfTestSamples = tokensOfTestFiles
+
+                dataIdx = random.randint(0, len(usedTestsetTokensOfTestSamples)-1) # index in data selection
+                tokens = usedTestsetTokensOfTestSamples[dataIdx] # select tokens of random input file
                 
-                # compute sum for convinience
-                lossOfAllSamples = 0.0
-                for iDataIdx in range(len(tokensOfTrainingFiles)):
-                    if iDataIdx in errorByDataIdx:
-                        lossOfAllSamples += errorByDataIdx[iDataIdx]
-                logger.write(f'sum of training loss by data   sumTrainingLoss={lossOfAllSamples}')
+                # iterate over token and feed stimulus into NN
 
-                print('debug error by training data (calculate finished)')
+                textAlreadyPredicted = '' # 
+
+                for iTokenIdx in range(len(tokens)-4):
+                    
+                    currentTokenArr = []
+                    for idx in range(4):
+                        currentTokenArr.append( tokens[iTokenIdx+idx] )
+                    predictedToken = tokens[iTokenIdx+4]
+                    
+                    xTensor0 = vectorsByInputToken[currentTokenArr[0]] * 0.1
+                    xTensor1 = vectorsByInputToken[currentTokenArr[1]] * 0.1
+                    xTensor2 = vectorsByInputToken[currentTokenArr[2]] * 0.1
+                    xTensor3 = vectorsByInputToken[currentTokenArr[3]] * 0.1
+                    
+                    xTensor = torch.concat((xTensor0,xTensor1,xTensor2,xTensor3))
+                    xTensor = xTensor.cuda()
+                    yTargetTensor = vectorsByInputToken[predictedToken] * 0.1
+                    yTargetTensor = yTargetTensor.cuda()
+                    
+                    yTensor = model.forward(xTensor)
+                    #print('y='+str(yTensor)) # DBG
+
+                    #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum() # update loss function
+
+                    yTensor = torch.nn.functional.softmax(yTensor) # softmax to compute probabilities
+                    delta_E = delta_E + (1.0 - yTensor[predictedToken])
+
+                    ###
+                    #### find best vector which matches best
+                    ###if True:
+                    ###    bestIdx = 0
+                    ###    bestSim = -1.0
+                    ###    idx = 0
+                    ###    for iVec in vectorsByInputToken:
+                    ###        thisSim = torch.nn.CosineSimilarity(dim=-1)(yTensor, iVec)
+                    ###        if thisSim > bestSim:
+                    ###            bestSim = thisSim
+                    ###            bestIdx = idx
+                    ###        idx+=1
+                    ###    
+                    ###    simToCorrectPredictionVec = torch.nn.CosineSimilarity(dim=-1)(yTensor, yTargetTensor) # similarity to correct prediction vector
+                    ###    
+                    ###    tempVal0 = textAlreadyPredicted.replace('\n', '\\n')
+                    ###    logger.write(f'before={tempVal0}?    decoded predicted correctly={bestIdx==predictedToken}    simToCorrectPredVec={simToCorrectPredictionVec}')
+
+                    textAlreadyPredicted += retLetterByTokenId(predictedToken)
+
+
+
+                
+                
+                print('... done')
+
+                lossVal = delta_E.item()
+                logger.write(f'testLoss={lossVal:.6f}     wallclockTime={time.time()-wallclockStart:.1f} it={it}')
             """
-            
+    
 
-            #if it == 5000:
-            #    learningRate *= 0.3
+    
+    if mode == 'inference': # interactive inference
+        #
 
-            
-            delta_E.backward()#retain_graph=True)
-            
-            model.learn(learningRate)
+        while True:
 
-            del delta_E
-        
+            cntPredictTokens = 20
 
+            strTextPrompt = input('>')
 
+            tokensOfPrompt = tokenizer.encode(strTextPrompt, add_special_tokens=False)
 
-
-        if (time.time() - timeLastSaved) > 3.0*60.0: # is storing of the model necessary?
-
-            # small PROTOTYPING model
-            #pathModelDest = 'modernFastWeightProgrammerEmath.pth'
-
-            # trained to low loss (with old chunking algo)
-            pathModelDest = 'modernFastWeightProgrammer__plnA.pth'
-
-            # (with new chunking algo)
-            pathModelDest = 'modernFastWeightProgrammer__plnB.pth'
+            print(tokensOfPrompt) # DBG  the tokens of the prompt
 
 
-            # * store model to disk
-            print('store model to disk...')
-            ####model.saveToDisk('modernFastWeightProgrammerEmath.pth')
-            model.saveModel(pathModelDest, 0, None)
-            print('...done')
+            # do inference with LM
+            completion = Completion()
+            responseCompletion = completion.processTokens(model, tokensOfPrompt, cntPredictTokens)
 
-            timeLastSaved = time.time()
+            arrCompleteResponse = responseCompletion['tokens']
 
-        """
-        # * test set
-        if it > 0 and (it % 100) == 0  and len(tokensOfTestFiles) > 0:
-            print('compute test set...')
+            print(arrCompleteResponse)
 
-            model.resetInternalState()
+            strDecoded = tokenizer.decode(arrCompleteResponse)
 
-            delta_E = torch.tensor([[0.0]])
-            delta_E = delta_E.cuda()
-
-            usedTestsetTokensOfTestSamples = tokensOfTestFiles
-
-            dataIdx = random.randint(0, len(usedTestsetTokensOfTestSamples)-1) # index in data selection
-            tokens = usedTestsetTokensOfTestSamples[dataIdx] # select tokens of random input file
-            
-            # iterate over token and feed stimulus into NN
-
-            textAlreadyPredicted = '' # 
-
-            for iTokenIdx in range(len(tokens)-4):
-                
-                currentTokenArr = []
-                for idx in range(4):
-                    currentTokenArr.append( tokens[iTokenIdx+idx] )
-                predictedToken = tokens[iTokenIdx+4]
-                
-                xTensor0 = vectorsByInputToken[currentTokenArr[0]] * 0.1
-                xTensor1 = vectorsByInputToken[currentTokenArr[1]] * 0.1
-                xTensor2 = vectorsByInputToken[currentTokenArr[2]] * 0.1
-                xTensor3 = vectorsByInputToken[currentTokenArr[3]] * 0.1
-                
-                xTensor = torch.concat((xTensor0,xTensor1,xTensor2,xTensor3))
-                xTensor = xTensor.cuda()
-                yTargetTensor = vectorsByInputToken[predictedToken] * 0.1
-                yTargetTensor = yTargetTensor.cuda()
-                
-                yTensor = model.forward(xTensor)
-                #print('y='+str(yTensor)) # DBG
-
-                #delta_E = delta_E + (yTargetTensor - yTensor).pow(2).sum() # update loss function
-
-                yTensor = torch.nn.functional.softmax(yTensor) # softmax to compute probabilities
-                delta_E = delta_E + (1.0 - yTensor[predictedToken])
-
-                ###
-                #### find best vector which matches best
-                ###if True:
-                ###    bestIdx = 0
-                ###    bestSim = -1.0
-                ###    idx = 0
-                ###    for iVec in vectorsByInputToken:
-                ###        thisSim = torch.nn.CosineSimilarity(dim=-1)(yTensor, iVec)
-                ###        if thisSim > bestSim:
-                ###            bestSim = thisSim
-                ###            bestIdx = idx
-                ###        idx+=1
-                ###    
-                ###    simToCorrectPredictionVec = torch.nn.CosineSimilarity(dim=-1)(yTensor, yTargetTensor) # similarity to correct prediction vector
-                ###    
-                ###    tempVal0 = textAlreadyPredicted.replace('\n', '\\n')
-                ###    logger.write(f'before={tempVal0}?    decoded predicted correctly={bestIdx==predictedToken}    simToCorrectPredVec={simToCorrectPredictionVec}')
-
-                textAlreadyPredicted += retLetterByTokenId(predictedToken)
+            print(strDecoded)
 
 
-
-            
-            
-            print('... done')
-
-            lossVal = delta_E.item()
-            logger.write(f'testLoss={lossVal:.6f}     wallclockTime={time.time()-wallclockStart:.1f} it={it}')
-        """
+        pass
     
 
     print("info: finished")
