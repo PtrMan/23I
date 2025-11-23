@@ -190,7 +190,10 @@ import math
 
 def clampGradients(grad):
     # 0.2 works in the small test with two training files
-    clampVal = 0.07 # 0.2 # 0.07 # 0.2 # 7.0 # 0.1 # 0.6 #0.1
+
+    # 0.07 worked with 1.6 mb of training data
+
+    clampVal = 0.1 # 0.2 # 0.07 # 0.2 # 7.0 # 0.1 # 0.6 #0.1
     return torch.clamp(grad, min=-clampVal, max=clampVal)
 
 
@@ -203,6 +206,7 @@ class FastNn(torch.nn.Module):
         self.fc1_weight = self.fc1_weight.cuda()
         self.fc1_weight = torch.nn.Parameter(self.fc1_weight)
         self.fc1_bias = torch.zeros(hiddenSize, requires_grad=True)
+        torch.nn.init.normal_(self.fc1_bias, mean=0.0, std=0.01)
         self.fc1_bias = self.fc1_bias.cuda()
         self.fc1_bias = torch.nn.Parameter(self.fc1_bias)
 
@@ -211,6 +215,7 @@ class FastNn(torch.nn.Module):
         self.fc2_weight = self.fc2_weight.cuda()
         self.fc2_weight = torch.nn.Parameter(self.fc2_weight)
         self.fc2_bias = torch.zeros(outputSize, requires_grad=True)
+        torch.nn.init.normal_(self.fc2_bias, mean=0.0, std=0.01)
         self.fc2_bias = self.fc2_bias.cuda()
         self.fc2_bias = torch.nn.Parameter(self.fc2_bias)
 
@@ -332,7 +337,7 @@ class FwpLayer(torch.nn.Module):
         
         # init with normal distribution
         #sizeIn = self.rnnHiddenstateSize+self.inputSize
-        torch.nn.init.normal_(self.rnnWeightMatrix, mean=0.0, std=0.001) # std=1/math.sqrt(sizeIn))
+        torch.nn.init.normal_(self.rnnWeightMatrix, mean=0.0, std=0.001*6.7) # std=1/math.sqrt(sizeIn))
         
         self.rnnWeightMatrix = self.rnnWeightMatrix.cuda()
         self.rnnWeightMatrix = torch.nn.Parameter(self.rnnWeightMatrix)
@@ -413,6 +418,13 @@ class FwpLayer(torch.nn.Module):
         #print(rnnInputTensor2.shape)
 
         linearCombinationRnn = rnnInputTensor2 @ self.rnnWeightMatrix.T + self.rnnBiasVector # Compute the linear combination of input and weights
+        
+        enDbgRnnNorm = False # debug norm of linear combination fed into nonlinearity of RNN?
+        if enDbgRnnNorm:
+            valDbgNorm = torch.norm(linearCombinationRnn)
+            print(f'DBG rnn activation norm pre non-linearity={valDbgNorm}')
+        
+
         tanhActivation = torch.tanh(linearCombinationRnn) # Apply the Tanh activation function
 
 
@@ -477,6 +489,8 @@ class FwpLayer(torch.nn.Module):
         learningRateOfRnn = 0.00015
 
         learningRateOfRnn = 0.0005
+
+        learningRateOfRnn = learningRate * 0.5
         
         # commented because it is not anymore learned
         ##if self.rnnInitialHiddenstate.grad is not None: # can be None
@@ -724,7 +738,6 @@ class FwpNn(torch.nn.Module):
             # we normalize the complete crossbar instead of nnOut, because nnOut can be small (especially in the beginning)
             crossbar = torch.nn.functional.normalize(crossbar, dim=0)
         
-        
         logitheadOut = self.logitHead.forward(crossbar)
 
         return logitheadOut
@@ -942,7 +955,7 @@ if __name__ == '__main__':
     CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/txtForPrototypingA'
 
     # (with new chunking algo)
-    pathModelDest = 'modernFastWeightProgrammer__mlTextA.pth'
+    pathModelDest = 'modernFastWeightProgrammer__mlTextBmini.pth'
     CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/fullDatasetA'
 
 
@@ -959,6 +972,9 @@ if __name__ == '__main__':
 
 
 
+    learningRateMax = 0.0005
+    learningRateMin = 0.0002
+    learningRateAnihilationPeriod = 8000
 
     lengthOfContext = 24
     BATCH_SIZE = 1
@@ -1043,7 +1059,7 @@ if __name__ == '__main__':
 
         # make text short
         # FOR PROTOTYPING!!!
-        #all_texts = all_texts[:25000]
+        all_texts = all_texts[:250000]
 
         # --- Dataset and DataLoader ---
         train_dataset = TextDataset(all_texts, tokenizer, max_length=lengthOfFragment)
@@ -1066,14 +1082,14 @@ if __name__ == '__main__':
 
     ####model.sizeInput = 4*22
 
-    model.nLayers = 2
+    model.nLayers = 3
 
     model.sizeVocab = VOCAB_SIZE
 
     model.build() # build the NN
 
 
-    if mode != 'train': # then mode is 'inference'
+    if False or mode != 'train': # then mode is 'inference'
 
         print('[info] load model...')
 
@@ -1094,6 +1110,8 @@ if __name__ == '__main__':
     timeLastSaved = time.time() # time of the last saving of the model to disk
 
 
+    it2 = 0
+
     if mode == 'train':
 
         runningLossAvg = None
@@ -1108,6 +1126,17 @@ if __name__ == '__main__':
             
             for i, batch in enumerate(train_dataloader):
                 
+                it2 += 1
+
+                enSuperconvergence = True
+
+                learningRate = learningRateMax
+                # superconvergence (see paper on training NN with superconvergence)
+                if enSuperconvergence:
+                    diff2 = learningRateMax - learningRateMin
+                    learningRate = learningRateMin + diff2*0.5*(1.0+math.cos(2.0 * math.pi * (it2 / learningRateAnihilationPeriod)))
+                
+
                 model.reset()
                 model.resetInternalState()
                 
@@ -1143,6 +1172,9 @@ if __name__ == '__main__':
 
                 completion = Completion()
                 responseCompletion = completion.processTokens(model, tokens, 0)
+
+
+
 
 
                 """
@@ -1404,3 +1436,10 @@ if __name__ == '__main__':
 # TODO TODO TODO : implement the embedding layer, give the model only the ids of the tokens!
 # TODO : let the model predict the symbol from the alphabet of the tokenizer
 
+
+# 'ChatGPT had become'   # in training set
+# 'ChatGPT Is a'         # in training set
+
+# 'A neural network is'  # not in training set
+# '1. 2. 3. 4.'              # not in training set . useful for probing enumeration
+# '1 2 3 4'              # not in training set . useful for probing enumeration
