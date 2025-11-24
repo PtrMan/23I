@@ -24,143 +24,11 @@ class RandomVecGenerator(object):
 
 
 
-
-
-
-logger = Logger2('log5893934857.txt')
-
-
-
-
-
-
-d0 = {} # dictionary of token by key=char
-id0 = 0 # id counter of token
-
-def retLetterByTokenId(tokenId):
-    for iChar, iTokenId in d0.items():
-        if iTokenId == tokenId:
-            return iChar
-    raise Exception('tokenId was not found!')
-
-
-"""
-filepathsTestset = []
-
-
-
-
-
-
-filepathsTrainingset =  ['untitled5.txt', 'untitled6.txt', 'untitled7_qa.txt', 'untitled8.txt', 'untitled9.txt', 'untitled10.txt', 'untitled11.txt', 'untitled12_agent.txt', 'untitled13_math.txt', 'untitled14_nnArch.txt']
-filepathsTrainingset =  ['untitled5.txt', 'untitled6.txt', 'untitled7_qa.txt', 'untitled8.txt', 'untitled9.txt', 'untitled10.txt', 'untitled11.txt', 'untitled12_agent.txt', 'untitled13_math.txt', 'untitled14_nnArch.txt', 'untitled17_coding.txt']
-
-
-
-
-
-filepathsTrainingset = []
-filepathsTrainingset = filepathsTrainingset + ['untitled5.txt', 'untitled6.txt', 'untitled13_math.txt'] # trainingset with math
-# task: natural language to narsese
-filepathsTrainingset = filepathsTrainingset + ['untitled16_toNarseseGoalB.txt', 'untitled17_toNarseseGoalC.txt'] # previous version had trouble with it (!!!?)
-filepathsTestset = ['./dataset_test/test0_math.txt', './dataset_test/test1_math.txt', './dataset_test/test2_math.txt']
-
-
-filepathsTrainingset = ["/notebooks/trainingdata_text/languageSimpleA/shakespearMidsummer.txt"]
-
-filepathsTrainingset = ["/zfsPoolF/TYPE_mlDatasets/txtC/pln errata -- wiki opencog.txt"]
-
-
-# for testing: simple task which is easy to solve for FFNN alone
-#filepathsTestset = []
-#filepathsTrainingset = []
-#filepathsTrainingset = filepathsTrainingset + ['untitled5.txt', 'untitled6.txt']
-
-
-
-#filepathsTrainingset = ['trainingdataDelayTestA.txt'] # test to test if the fast-NN can react differently to the same stimuli,   should train to loss = 0.0
-
-#filepathsTrainingset = []
-
-tokensOfTrainingFiles = []
-
-for iFilename in filepathsTrainingset:
-    f = open(iFilename, 'r') # small
-    z0 = f.read()
-    f.close()
-
-    for z1 in z0:
-        if z1 not in d0:
-            d0[z1] = id0
-            id0+=1
-
-
-
-
-
-#print(d0) # DBG
-
-
-# tokenize single files
-for iFilename in filepathsTrainingset:
-    f = open(iFilename, 'r') # small
-    z0 = f.read()
-    f.close()
-
-    tokens = []
-    for z1 in z0:
-        tokens.append(d0[z1])
-
-    tokensOfTrainingFiles.append(tokens)
-
-
-# cut training data short for testing
-if True:
-    tokensOfTrainingFiles = tokensOfTrainingFiles[:7000]
-
-
-if False:
-    print(tokensOfTrainingFiles)
-"""
-
-
-
-"""
-tokensOfTestFiles = []
-
-if False:
-    # tokenize single files
-    for iFilename in filepathsTestset:
-        f = open(iFilename, 'r') # small
-        z0 = f.read()
-        f.close()
-
-        tokens = []
-        for z1 in z0:
-            tokens.append(d0[z1])
-
-        tokensOfTestFiles.append(tokens)
-"""
-
-
-
-rngVecGen = RandomVecGenerator(seed=43)
-
-vectorsByInputToken = []
-for z0 in range(id0):
-    z1 = rngVecGen.gen(22)
-    vectorsByInputToken.append(z1)
-
-
-
-
-
-
-
-
-
-
-
+# helper
+def guardNonZeroMag(v):
+    mag = torch.norm(v).tolist()
+    if mag < 1.0e-4:
+        print('WARNING: near zero magnitude detected!')
 
 
 
@@ -170,6 +38,10 @@ for z0 in range(id0):
 
 import math
 
+import torch
+import torch.nn as nn
+
+from nnModuleGru import *
 
 # experimental implementation of fast weight programmer by Schmidhuber
 #
@@ -211,11 +83,12 @@ class FastNn(torch.nn.Module):
         self.fc1_bias = torch.nn.Parameter(self.fc1_bias)
 
         self.fc2_weight = torch.randn(hiddenSize, outputSize, requires_grad=True) * 0.02 # TODO : null init
+        torch.nn.init.normal_(self.fc2_weight, mean=0.0, std=0.0005)
         #torch.nn.init.kaiming_uniform_(self.fc2_weight)
         self.fc2_weight = self.fc2_weight.cuda()
         self.fc2_weight = torch.nn.Parameter(self.fc2_weight)
         self.fc2_bias = torch.zeros(outputSize, requires_grad=True)
-        torch.nn.init.normal_(self.fc2_bias, mean=0.0, std=0.01)
+        torch.nn.init.normal_(self.fc2_bias, mean=0.0, std=0.005)
         self.fc2_bias = self.fc2_bias.cuda()
         self.fc2_bias = torch.nn.Parameter(self.fc2_bias)
 
@@ -317,10 +190,21 @@ class FwpLayer(torch.nn.Module):
         # bigger NN
         self.rnnHiddenstateSize = 190
         self.fastNnHiddensize = 250
+
+
+
+
     
     # builds the NN from the sizes etc.
     def build(self):
 
+
+
+
+        sizeRnnInput = self.inputSize
+        self.rnn = GatedRecurrentUnit_MinimalGatedUnit(sizeRnnInput, self.rnnHiddenstateSize)
+
+        self.rnn.resetParameters()
 
 
         # fast-NN
@@ -375,6 +259,8 @@ class FwpLayer(torch.nn.Module):
 
         self.rnnHiddenstate = self.rnnInitialHiddenstate.detach()
 
+        self.rnn.resetHiddenstate()
+
 
     def reset(self):
         self.rnnWeightMatrix = torch.nn.Parameter(self.rnnWeightMatrix.detach())
@@ -410,7 +296,7 @@ class FwpLayer(torch.nn.Module):
     def forward(self, xTensor):
 
         
-
+        """
 
         #print(rnnInputTensor.shape)
 
@@ -450,22 +336,62 @@ class FwpLayer(torch.nn.Module):
 
 
 
-        # add parameters to trace for learning
-        self.ffnnWeightupdateCalcWeightMatrixTrace.append(self.ffnnWeightupdateCalcWeightMatrix)
-        self.ffnnWeightupdateCalcBiasTrace.append(self.ffnnWeightupdateCalcBias)
 
-        # NN to compute weight update by output of RNN
+        """
+
+
+
+
+
+
+
+        ####print(xTensor.size())
+        tensorXForRnn = xTensor.reshape(1, -1) # dimension of 1 because we are using only batchsize of 1
+        ####print(tensorXForRnn.size())
+
+        ###print(tensorXForRnn)
+
+        tensorFromRnn = self.rnn.step(tensorXForRnn)
+        ###print(tensorFromRnn.size())
+        ####print(tensorFromRnn)
+
+        guardNonZeroMag(tensorFromRnn)
+
+        #dlpdlpdlpflpdlp()
+        
+
+        rnnHiddenstate2 = tensorFromRnn.reshape(-1)
+        ####print(rnnHiddenstate2.size())
+
+        ####hhhhhhhhhhh()
+
+
+
+
+
+
+        # * NN to compute weight update by output of RNN
 
         linearCombinationWeightupdateCalc = rnnHiddenstate2 @ self.ffnnWeightupdateCalcWeightMatrix.T + self.ffnnWeightupdateCalcBias
         #updateNnActivation = torch.tanh(linearCombinationWeightupdateCalc) # nonlinear version
         updateNnActivation = linearCombinationWeightupdateCalc # linear version
         #print(updateNnActivation) # DBG
 
+        # add parameters to trace for learning
+        self.ffnnWeightupdateCalcWeightMatrixTrace.append(self.ffnnWeightupdateCalcWeightMatrix)
+        self.ffnnWeightupdateCalcBiasTrace.append(self.ffnnWeightupdateCalcBias)
 
 
 
-        # fastNN
-        fastNnActivation = self.fastNn.forward(torch.concat((xTensor,rnnHiddenstate2)))
+        # * fastNN
+
+        tensorInputToFastNn = torch.concat((xTensor,rnnHiddenstate2))
+
+        ####print(tensorInputToFastNn.size()) # DBG
+
+        ####print('calc fastNN ...') ) # DBG
+        fastNnActivation = self.fastNn.forward(tensorInputToFastNn)
+        ####print('...done') ) # DBG
 
 
         # * (4) update weight
@@ -476,9 +402,11 @@ class FwpLayer(torch.nn.Module):
             self.fastNn.updateWeights(updateNnActivation)
 
 
+        ####print('') ) # DBG
+        ####print('fastNnActivation') ) # DBG
+        ####print(fastNnActivation.size()) ) # DBG
 
-        
-        
+
         return fastNnActivation
     
     def learn(self, learningRate):
@@ -729,15 +657,28 @@ class FwpNn(torch.nn.Module):
         
         crossbar = self.inputLayer.forward(x)
         
+        idxLayer = 0
         for itLayer in self.layers:
 
             nnOut = itLayer.forward(crossbar)
+
+            if False: # DEBUG norm of nnOut ?  (should not be to high!)
+                print(f'layerIdx={idxLayer} nnOut norm = {torch.norm(nnOut).tolist()}')
+
+
+
+            idxLayer+=1
+
+
+
             crossbar = crossbar + nnOut # skip connection
 
             # NORMALIZE here for >>stable training<<
             # we normalize the complete crossbar instead of nnOut, because nnOut can be small (especially in the beginning)
             crossbar = torch.nn.functional.normalize(crossbar, dim=0)
         
+
+
         logitheadOut = self.logitHead.forward(crossbar)
 
         return logitheadOut
@@ -935,6 +876,11 @@ class Completion(object):
 if __name__ == '__main__':
 
 
+
+
+
+
+
     mode = 'train'
     #mode = 'inference'
 
@@ -944,11 +890,12 @@ if __name__ == '__main__':
 
 
 
+
+
     # for prototyping
     pathModelDest = 'modernFastWeightProgrammer__prototypingA.pth'
     CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/txtForPrototyingMiniA'
-
-
+    
 
     # (with new chunking algo)
     pathModelDest = 'modernFastWeightProgrammer__plnB.pth'
@@ -957,6 +904,7 @@ if __name__ == '__main__':
     # (with new chunking algo)
     pathModelDest = 'modernFastWeightProgrammer__mlTextBmini.pth'
     CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/fullDatasetA'
+
 
 
 
@@ -984,7 +932,7 @@ if __name__ == '__main__':
 
 
 
-
+    logger = Logger2('log5893934857.txt')
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -1060,6 +1008,7 @@ if __name__ == '__main__':
         # make text short
         # FOR PROTOTYPING!!!
         all_texts = all_texts[:250000]
+        #all_texts = all_texts[:25000]
 
         # --- Dataset and DataLoader ---
         train_dataset = TextDataset(all_texts, tokenizer, max_length=lengthOfFragment)
@@ -1431,6 +1380,8 @@ if __name__ == '__main__':
 
 
 
+
+# FIXME FIXME FIXME ::: optimize parameters of RNN with trace functionality !!! of Wf, Uf, bf,  Wh, Uh, bh !!!
 
 
 # TODO TODO TODO : implement the embedding layer, give the model only the ids of the tokens!
