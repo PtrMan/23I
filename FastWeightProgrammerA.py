@@ -1,3 +1,9 @@
+# experimental implementation of "Fast Weight Programmer" (the idea is from Schmidhuber)
+#
+# PROBLEM: doesn't converge for small data of size 25kb . Loss is stuck at ~5.0
+# PROBLEM: the current implementation isn't storing gradients into the TRACE for the FFNN !!!
+#          .
+
 import torch
 from torch import nn
 import random
@@ -30,7 +36,9 @@ def guardNonZeroMag(v):
     if mag < 1.0e-4:
         print('WARNING: near zero magnitude detected!')
 
-
+# helper for diagnostics
+def calcMaxAbsVal(m):
+    return torch.max(torch.abs(m)).tolist()
 
 
 
@@ -136,7 +144,7 @@ class FastNn(torch.nn.Module):
     
     def updateWeights(self, deltaVector):
         # debug
-        #print(f'weight update 2 L2norm={torch.norm(deltaVector, p=2).item()}') # DBG
+        print(f'weight update 2 L2norm={torch.norm(deltaVector, p=2).item()}') # DBG
 
         # split delta vector of weight update into parts which are added to the weight matrices
         lenA = self.fc1_weight.numel()
@@ -154,6 +162,7 @@ class FastNn(torch.nn.Module):
 
         # compute actual update of weights
         self.fc1_weight.data = self.fc1_weight.data + deltaAMatrix
+
         #self.fc2_weight.data = self.fc2_weight.data + deltaBMatrix
 
 
@@ -191,6 +200,9 @@ class FwpLayer(torch.nn.Module):
         self.rnnHiddenstateSize = 190
         self.fastNnHiddensize = 250
 
+        # used for debugging
+        # TODO : init with ctor param
+        self.layerIdx = 0
 
 
 
@@ -204,7 +216,7 @@ class FwpLayer(torch.nn.Module):
         sizeRnnInput = self.inputSize
         self.rnn = GatedRecurrentUnit_MinimalGatedUnit(sizeRnnInput, self.rnnHiddenstateSize)
 
-        self.rnn.resetParameters()
+        ###self.rnn.resetParameters()
 
 
         # fast-NN
@@ -214,26 +226,6 @@ class FwpLayer(torch.nn.Module):
         #print(f'fast NN parameter count = {self.ffnnFastNnWeightMatrixInitial.numel()+self.ffnnFastNnBias.numel()}')
         
 
-
-        # RNN
-
-        self.rnnWeightMatrix = torch.randn(self.rnnHiddenstateSize, self.rnnHiddenstateSize+self.inputSize) * 0.002 # 0.02 # not learned!!!
-        
-        # init with normal distribution
-        #sizeIn = self.rnnHiddenstateSize+self.inputSize
-        torch.nn.init.normal_(self.rnnWeightMatrix, mean=0.0, std=0.001*6.7) # std=1/math.sqrt(sizeIn))
-        
-        self.rnnWeightMatrix = self.rnnWeightMatrix.cuda()
-        self.rnnWeightMatrix = torch.nn.Parameter(self.rnnWeightMatrix)
-        
-        #self.rnnBiasVector = torch.randn(self.rnnHiddenstateSize) * 0.02 # not learned!!!
-        self.rnnBiasVector = torch.zeros(self.rnnHiddenstateSize)
-        self.rnnBiasVector = self.rnnBiasVector.cuda()
-        self.rnnBiasVector = torch.nn.Parameter(self.rnnBiasVector, requires_grad=True)
-        
-        self.rnnInitialHiddenstate = torch.randn(self.rnnHiddenstateSize) * 0.0005 # not learned!!! (because the gradients vanish to zero if it would be learned)
-        self.rnnInitialHiddenstate = self.rnnInitialHiddenstate.cuda()
-        self.rnnInitialHiddenstate = torch.nn.Parameter(self.rnnInitialHiddenstate, requires_grad=False)
 
 
 
@@ -257,16 +249,16 @@ class FwpLayer(torch.nn.Module):
     def resetInternalState(self):
         self.fastNn.resetInternalState()
 
-        self.rnnHiddenstate = self.rnnInitialHiddenstate.detach()
+        ####self.rnnHiddenstate = self.rnnInitialHiddenstate.detach()
 
         self.rnn.resetHiddenstate()
 
 
     def reset(self):
-        self.rnnWeightMatrix = torch.nn.Parameter(self.rnnWeightMatrix.detach())
-        self.rnnBiasVector = torch.nn.Parameter(self.rnnBiasVector.detach())
+        ####self.rnnWeightMatrix = torch.nn.Parameter(self.rnnWeightMatrix.detach())
+        ####self.rnnBiasVector = torch.nn.Parameter(self.rnnBiasVector.detach())
         
-        self.rnnInitialHiddenstate = torch.nn.Parameter(self.rnnInitialHiddenstate.detach())
+        ####self.rnnInitialHiddenstate = torch.nn.Parameter(self.rnnInitialHiddenstate.detach())
         ####self.rnnInitialHiddenstate.requires_grad_()
         
         self.ffnnWeightupdateCalcWeightMatrix = torch.nn.Parameter(self.ffnnWeightupdateCalcWeightMatrix.detach())
@@ -287,58 +279,15 @@ class FwpLayer(torch.nn.Module):
 
         self.fastNn.reset()
 
+        # reset RNN
+        #self.rnn.resetHiddenstate()
 
 
-        # debug
-        #print(self.rnnWeightMatrix)
 
     
     def forward(self, xTensor):
 
         
-        """
-
-        #print(rnnInputTensor.shape)
-
-        rnnInputTensor2 = torch.concat((self.rnnHiddenstate*1.0, xTensor)) # combine input with hidden state of RNN
-        #print(rnnInputTensor2.shape)
-
-        linearCombinationRnn = rnnInputTensor2 @ self.rnnWeightMatrix.T + self.rnnBiasVector # Compute the linear combination of input and weights
-        
-        enDbgRnnNorm = False # debug norm of linear combination fed into nonlinearity of RNN?
-        if enDbgRnnNorm:
-            valDbgNorm = torch.norm(linearCombinationRnn)
-            print(f'DBG rnn activation norm pre non-linearity={valDbgNorm}')
-        
-
-        tanhActivation = torch.tanh(linearCombinationRnn) # Apply the Tanh activation function
-
-
-        # NORMALIZE here for >>stable training<<
-        tanhActivation = torch.nn.functional.normalize(tanhActivation, dim=0)
-
-
-        #print(tanh_activation) # DBG level 1
-
-        #input_tensor = torch.concat((tanh_activation, sin_activation))
-        self.rnnHiddenstate = tanhActivation
-
-        rnnHiddenstate2 = self.rnnHiddenstate
-        if False:
-            rnnHiddenstate2 = self.rnnHiddenstate - torch.mean(self.rnnHiddenstate) # subtract mean so that later calculations are easier
-
-
-        # HACK to check if RNN has a effect
-        if False:
-            rnnHiddenstate2 = rnnHiddenstate2*0.0
-
-
-
-
-
-
-        """
-
 
 
 
@@ -381,6 +330,7 @@ class FwpLayer(torch.nn.Module):
         self.ffnnWeightupdateCalcWeightMatrixTrace.append(self.ffnnWeightupdateCalcWeightMatrix)
         self.ffnnWeightupdateCalcBiasTrace.append(self.ffnnWeightupdateCalcBias)
 
+        ####print(self.ffnnWeightupdateCalcWeightMatrix.grad)
 
 
         # * fastNN
@@ -418,22 +368,45 @@ class FwpLayer(torch.nn.Module):
 
         learningRateOfRnn = 0.0005
 
+        # seems to work OK
         learningRateOfRnn = learningRate * 0.5
         
+        # ????
+        learningRateOfRnn = learningRate * 1.0
+
         # commented because it is not anymore learned
         ##if self.rnnInitialHiddenstate.grad is not None: # can be None
         ##    #print('update rnnInitialHiddenstate') # DBG
         ##    self.rnnInitialHiddenstate = self.rnnInitialHiddenstate - clampGradients(self.rnnInitialHiddenstate.grad)*learningRate*0.08
+
+        debugTotalGrad = None
+        debugFfnnGrad = True # debug gradient of the ffnn
+
+        print(len(self.ffnnWeightupdateCalcWeightMatrixTrace))
 
         for idx in range(len(self.ffnnWeightupdateCalcWeightMatrixTrace)):
             # compute learning rate of each trace item
             # we spread the learning-rate over the trace items to make it more fair
             lr2 = ( learningRateOfRnn/len(self.ffnnWeightupdateCalcWeightMatrixTrace) ) * 1.0
 
+            if debugFfnnGrad:
+                print(self.ffnnWeightupdateCalcWeightMatrixTrace[idx].grad is not None)
+
+                if self.ffnnWeightupdateCalcWeightMatrixTrace[idx].grad is not None:
+                    if debugTotalGrad is None:
+                        debugTotalGrad = self.ffnnWeightupdateCalcWeightMatrixTrace[idx].grad
+                    else:
+                        debugTotalGrad += self.ffnnWeightupdateCalcWeightMatrixTrace[idx].grad
+
             if self.ffnnWeightupdateCalcWeightMatrixTrace[idx].grad is not None: # check because it can be None
                 #print('update weightUpdate') # DBG
                 self.ffnnWeightupdateCalcWeightMatrix = self.ffnnWeightupdateCalcWeightMatrix - clampGradients(self.ffnnWeightupdateCalcWeightMatrixTrace[idx].grad)*lr2
                 self.ffnnWeightupdateCalcBias = self.ffnnWeightupdateCalcBias - clampGradients(self.ffnnWeightupdateCalcBiasTrace[idx].grad)*lr2
+
+
+        if debugFfnnGrad and debugTotalGrad is not None:
+            maxAbsGradValue = calcMaxAbsVal(debugTotalGrad)
+            print(f'DIAGNOSTICS: layer={self.layerIdx}   maxAbsGrad={maxAbsGradValue}')
 
 
         self.fastNn.learn(learningRate)
@@ -724,6 +697,17 @@ class FwpNn(torch.nn.Module):
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 #########################
 # dataset utilities
 
@@ -895,14 +879,15 @@ if __name__ == '__main__':
     # for prototyping
     pathModelDest = 'modernFastWeightProgrammer__prototypingA.pth'
     CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/txtForPrototyingMiniA'
-    
+
+
 
     # (with new chunking algo)
     pathModelDest = 'modernFastWeightProgrammer__plnB.pth'
     CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/txtForPrototypingA'
 
     # (with new chunking algo)
-    pathModelDest = 'modernFastWeightProgrammer__mlTextBmini.pth'
+    pathModelDest = 'modernFastWeightProgrammer__mlTextProtoB.pth'
     CORPUS_DIRECTORY = '/zfsPoolF/TYPE_mlDatasets/fullDatasetA'
 
 
@@ -919,9 +904,14 @@ if __name__ == '__main__':
     learningRate = 0.0005
 
 
-
+    # seems to work OK
     learningRateMax = 0.0005
     learningRateMin = 0.0002
+
+
+    learningRateMax = 0.0009
+    learningRateMin = 0.0001
+
     learningRateAnihilationPeriod = 8000
 
     lengthOfContext = 24
@@ -934,8 +924,11 @@ if __name__ == '__main__':
 
     logger = Logger2('log5893934857.txt')
 
+    
+    # Setup
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    print(f"Using device: {DEVICE}")
+    
 
 
     # --- Tokenizer ---
@@ -984,6 +977,9 @@ if __name__ == '__main__':
             else:
                 print(f"Found {len(text_files)} '.txt' files.")
                 for file_path in text_files:
+
+                    print(f'read txt file name={file_path}')
+
                     try:
                         with open(file_path, "r", encoding="utf-8", errors='ignore') as f:
                             lines = f.readlines()
@@ -1007,8 +1003,12 @@ if __name__ == '__main__':
 
         # make text short
         # FOR PROTOTYPING!!!
-        all_texts = all_texts[:250000]
-        #all_texts = all_texts[:25000]
+        
+        all_texts = all_texts[:25000]
+
+        #all_texts = all_texts[:250000]
+
+
 
         # --- Dataset and DataLoader ---
         train_dataset = TextDataset(all_texts, tokenizer, max_length=lengthOfFragment)
@@ -1025,13 +1025,27 @@ if __name__ == '__main__':
 
 
 
+
+    ####CONFIG['epochs'] = 1000
+
+
+
+
+
+    ####CONFIG['vocab_size'] = tokenizer.vocab_size
+    
+    
+
+
+
     model = FwpNn()
 
     ####model.outputSize = len(d0) # output size of the NN is the number of symbols
 
     ####model.sizeInput = 4*22
 
-    model.nLayers = 3
+    # model.nLayers = 3
+    model.nLayers = 1
 
     model.sizeVocab = VOCAB_SIZE
 
@@ -1061,6 +1075,8 @@ if __name__ == '__main__':
 
     it2 = 0
 
+    seenTokens = 0
+
     if mode == 'train':
 
         runningLossAvg = None
@@ -1083,7 +1099,7 @@ if __name__ == '__main__':
                 # superconvergence (see paper on training NN with superconvergence)
                 if enSuperconvergence:
                     diff2 = learningRateMax - learningRateMin
-                    learningRate = learningRateMin + diff2*0.5*(1.0+math.cos(2.0 * math.pi * (it2 / learningRateAnihilationPeriod)))
+                    learningRate = learningRateMin + diff2*0.5*(1.0+math.sin(2.0 * math.pi * (it2 / learningRateAnihilationPeriod)))
                 
 
                 model.reset()
@@ -1122,7 +1138,7 @@ if __name__ == '__main__':
                 completion = Completion()
                 responseCompletion = completion.processTokens(model, tokens, 0)
 
-
+                seenTokens += len(tokens)
 
 
 
@@ -1210,13 +1226,14 @@ if __name__ == '__main__':
                 runningLossAvg = runningLossAvg * (1.0-lossAvgFactor) + (loss.item() / cntDat)*lossAvgFactor
 
 
-                if True and (it % 1) == 0:
+                if True and (it2 % 5) == 0:
                     #print('y='+str(yTensor)) # DBG
                     
                     lossVal = loss.item() / cntDat
                     print('')
                     print(f'trainingLoss={lossVal:.6f} dataIdx={dataIdx} lr={learningRate}     wallclockTime={time.time()-wallclockStart:.1f} it={it}')
                     print(f'avgTrainingLoss={runningLossAvg:.6f}')
+                    print(f'seen tokens={seenTokens/1000.0}k   epoch=TODO')
 
                     #print(f'training {nCorrect}/{nCnt} = {nCorrect/nCnt}')
 
@@ -1389,7 +1406,7 @@ if __name__ == '__main__':
 
 
 # 'ChatGPT had become'   # in training set
-# 'ChatGPT Is a'         # in training set
+# 'ChatGPT is a'         # in training set
 
 # 'A neural network is'  # not in training set
 # '1. 2. 3. 4.'              # not in training set . useful for probing enumeration
