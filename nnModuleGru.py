@@ -36,12 +36,45 @@ class GatedRecurrentUnit_MinimalGatedUnit(torch.nn.Module):
 
     def resetParameters(self):
         torch.nn.init.kaiming_uniform_(self.Wf)
-        torch.nn.init.kaiming_uniform_(self.Uf)
+
+
+        v0 = torch.ones(self.hidden_size)
+        v0 = torch.diag(v0)
+
+        v1 = torch.Tensor(self.hidden_size, self.hidden_size)
+        torch.nn.init.normal_(v1, mean=0.0, std=0.01)
+
+        self.Uf = v0 + v1
+        self.Uf = self.Uf.cuda()
+
+        #torch.nn.init.kaiming_uniform_(self.Uf)
+        
+        
         torch.nn.init.normal_(self.bf, mean=0.0, std=0.01)
 
         torch.nn.init.kaiming_uniform_(self.Wh)
-        torch.nn.init.kaiming_uniform_(self.Uh)
+
+
+
+        #torch.nn.init.kaiming_uniform_(self.Uh)
+
+        v0 = torch.ones(self.hidden_size)
+        v0 = torch.diag(v0)
+
+        v1 = torch.Tensor(self.hidden_size, self.hidden_size)
+        torch.nn.init.normal_(v1, mean=0.0, std=0.01)
+
+        self.Uh = v0 + v1
+        self.Uh = self.Uh.cuda()
+
+
+
+
         torch.nn.init.normal_(self.bh, mean=0.0, std=0.01)
+
+
+
+        # FIXME : fix the gate to be init with ~ -1.5 so that the gate is closed at the beginning
         
 
     def resetHiddenstate(self):
