@@ -49,8 +49,8 @@ class GatedRecurrentUnit_MinimalGatedUnit(torch.nn.Module):
 
         #torch.nn.init.kaiming_uniform_(self.Uf)
         
-        
-        torch.nn.init.normal_(self.bf, mean=0.0, std=0.01)
+        # the gate to be init with ~ -1.5 so that the gate is closed at the beginning
+        torch.nn.init.normal_(self.bf, mean=-1.5, std=0.05)
 
         torch.nn.init.kaiming_uniform_(self.Wh)
 
@@ -70,11 +70,10 @@ class GatedRecurrentUnit_MinimalGatedUnit(torch.nn.Module):
 
 
 
-        torch.nn.init.normal_(self.bh, mean=0.0, std=0.01)
 
 
+        torch.nn.init.normal_(self.bh, mean=0.0, std=0.02)
 
-        # FIXME : fix the gate to be init with ~ -1.5 so that the gate is closed at the beginning
         
 
     def resetHiddenstate(self):
