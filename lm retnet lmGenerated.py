@@ -351,7 +351,7 @@ if __name__ == "__main__":
     # Model parameters
     embed_dim = int(512 * 1.5) # 768
     num_heads = 6
-    num_layers = 6
+    num_layers = 13
     dropout = 0.01
 
     model = GatedStateSpaceModel(
@@ -362,11 +362,22 @@ if __name__ == "__main__":
         dropout=dropout
     ).to(device)
     
+    checkpoint_path = 'retnetModelA_checkpoint.pth'
+    
+    # load model
+    if False:
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            print("Checkpoint loaded successfully.")
+        except FileNotFoundError:
+            print(f"No checkpoint found at {checkpoint_path}. Generating with untrained weights.")
+
+    
+    
+    
     print(f"Model Parameters: {sum(p.numel() for p in model.parameters())/1e6:.2f}M")
     
-    optimizer = torch.optim.AdamW(model.parameters(), betas=(0.9, 0.95), weight_decay=0.005, lr=3e-4)
-    checkpoint_path = 'retnetModelA_checkpoint.pth'
-
     # ---------------------------------------------------------
     # TOGGLE THIS TO SWITCH BETWEEN TRAINING AND INFERENCE
     # ---------------------------------------------------------
@@ -375,6 +386,16 @@ if __name__ == "__main__":
     MODE = sys.argv[1]
     
     if MODE == "TRAIN":
+        
+        
+        optimizer = torch.optim.AdamW(model.parameters(), betas=(0.9, 0.95), weight_decay=0.005, lr=3e-4)
+        
+        
+        # Add this after defining optimizer
+        #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=int(epochs/5000))
+        
+        
+        
         print("\n--- Loading Datasets ---")
         textcollector = TextTrainingCollector()
         
@@ -396,19 +417,14 @@ if __name__ == "__main__":
                     train_tokens = tokenizeText(full_text)
             except Exception as e:
                 print(f"Error reading train files: {e}")
-
-        # Fallback to synthetic data if no files found or empty
-        if len(train_tokens) < seq_len * 2:
-            print("(!) No training data found. Generating SYNTHETIC data for demo.")
-            # Synthetic pattern: "A B C A B C..." to prove convergence
-            pattern = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-            train_tokens = pattern * 5000
-            test_tokens = pattern * 1000
-        else:
-            # Split for test
-            split_idx = int(len(train_tokens) * 0.9)
-            test_tokens = train_tokens[split_idx:]
-            train_tokens = train_tokens[:split_idx]
+        
+        
+        train_tokens = train_tokens[:800000]
+        
+        # Split for test
+        split_idx = int(len(train_tokens) * 0.9)
+        test_tokens = train_tokens[split_idx:]
+        train_tokens = train_tokens[:split_idx]
 
         # Convert to tensors
         train_document = torch.tensor([train_tokens], dtype=torch.long).to(device)
@@ -423,31 +439,68 @@ if __name__ == "__main__":
             steps = 0
             
             # Training Loop
-            num_batches = 500 # Fixed batches per epoch for demo
+            num_batches = 300 # Fixed batches per epoch for demo
             
             for _ in range(num_batches):
+                
+                
+                
+                
+                # Inside the training loop
+                batch_size = 4  # Add this variable
+                max_start = train_document.size(1) - seq_len - 1
+
+                # Create a batch of random indices
+                ix = torch.randint(0, max_start, (batch_size,))
+
+                # Stack them to get shape (batch_size, seq_len)
+                inputs = torch.stack([train_document[0, i : i + seq_len] for i in ix])
+                targets = torch.stack([train_document[0, i+1 : i + seq_len + 1] for i in ix])
+
+                logits, _ = model(inputs, forward_impl='parallel')
+                
+                
+                
+                
+                """
                 # Random crop
                 max_start = train_document.size(1) - seq_len - 1
                 if max_start <= 0: break
                 
                 i = random.randint(0, max_start)
                 
-                inputs = train_document[:, i : i + seq_len]
-                targets = train_document[:, i+1 : i + seq_len + 1]
+                rngSeqLen = random.randint(3, seq_len)
+                
+                inputs = train_document[:, i : i + rngSeqLen]
+                targets = train_document[:, i+1 : i + rngSeqLen + 1]
                 
                 # Use parallel mode for training
                 logits, _ = model(inputs, forward_impl='parallel')
+                """
+                
                 loss = F.cross_entropy(logits.reshape(-1, vocab_size), targets.reshape(-1))
+                
+                
+                
+                
+                new_lr = min(1.0, epoch/120) * 3.0e-4
+                
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = new_lr
+                
+                
                 
                 optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 
+                #scheduler.step() # must be after optimizer.step()
+                
                 total_train_loss += loss.item()
                 steps += 1
                 
-                if steps % 10 == 0:
+                if steps % 30 == 0:
                     print(f"Epoch {epoch} | Step {steps} | Loss: {loss.item():.4f}")
             
             avg_train_loss = total_train_loss / max(1, steps)
@@ -496,6 +549,7 @@ if __name__ == "__main__":
         print("\n--- Generating Text ---")
         
         strPrompt = 'a neural network is'
+        strPrompt = '<ref>{{cite book |url=' # easy : appears a lot in wikitext
         arrPromptTokens = tokenizeText(strPrompt)
         tensorPromptTokens = torch.tensor([arrPromptTokens], dtype=torch.long).to(device)
         
