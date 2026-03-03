@@ -345,7 +345,7 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     vocab_size = 50257
-    seq_len = 64 # Keep small for demo stability
+    seq_len = 96 # 64 # Keep small for demo stability
     epochs = 1000000
     
     # Model parameters
@@ -362,30 +362,35 @@ if __name__ == "__main__":
         dropout=dropout
     ).to(device)
     
-    checkpoint_path = 'retnetModelA_checkpoint.pth'
+    checkpoint_path = 'retnetModelB_layer13_checkpoint.pth'
     
-    # load model
-    if False:
-        try:
-            checkpoint = torch.load(checkpoint_path, map_location=device)
-            model.load_state_dict(checkpoint['model_state_dict'])
-            print("Checkpoint loaded successfully.")
-        except FileNotFoundError:
-            print(f"No checkpoint found at {checkpoint_path}. Generating with untrained weights.")
+    #checkpoint_path = 'retnetModelCsmalldat_layer13_checkpoint.pth'
+    
 
-    
-    
-    
-    print(f"Model Parameters: {sum(p.numel() for p in model.parameters())/1e6:.2f}M")
-    
     # ---------------------------------------------------------
     # TOGGLE THIS TO SWITCH BETWEEN TRAINING AND INFERENCE
     # ---------------------------------------------------------
-    MODE = "TRAIN" 
+    #MODE = "TRAIN" 
     import sys
     MODE = sys.argv[1]
     
-    if MODE == "TRAIN":
+    if MODE == "TRAIN" or MODE == "CONTINUE":
+        
+        
+        # load model
+        if MODE == "CONTINUE":
+            try:
+                checkpoint = torch.load(checkpoint_path, map_location=device)
+                model.load_state_dict(checkpoint['model_state_dict'])
+                print("Checkpoint loaded successfully.")
+            except FileNotFoundError:
+                print(f"No checkpoint found at {checkpoint_path}. Generating with untrained weights.")
+
+        
+        
+        
+        print(f"Model Parameters: {sum(p.numel() for p in model.parameters())/1e6:.2f}M")
+        
         
         
         optimizer = torch.optim.AdamW(model.parameters(), betas=(0.9, 0.95), weight_decay=0.005, lr=3e-4)
@@ -401,6 +406,7 @@ if __name__ == "__main__":
         
         # --- DATA LOADING LOGIC ---
         real_data_path = '/home/r0b3/root/remoteDest_A/trainingdat_text/'
+        #real_data_path = '/home/r0b3/root/remoteDest_A/trainingdat_text/midQuality/'
         
         train_tokens = []
         test_tokens = []
@@ -419,10 +425,10 @@ if __name__ == "__main__":
                 print(f"Error reading train files: {e}")
         
         
-        train_tokens = train_tokens[:800000]
+        #train_tokens = train_tokens[:800000]
         
         # Split for test
-        split_idx = int(len(train_tokens) * 0.9)
+        split_idx = int(len(train_tokens) * 0.95)
         test_tokens = train_tokens[split_idx:]
         train_tokens = train_tokens[:split_idx]
 
@@ -431,15 +437,19 @@ if __name__ == "__main__":
         test_document = torch.tensor([test_tokens], dtype=torch.long).to(device)
         
         print(f"Train Tokens: {train_document.size(1)}")
-
+        
+        
         print("\n--- Starting Training ---")
-        for epoch in range(epochs):
+        
+        intSeenTokens = 0
+        
+        for intHeap in range(10000000000):
             model.train()
             total_train_loss = 0
             steps = 0
             
             # Training Loop
-            num_batches = 300 # Fixed batches per epoch for demo
+            num_batches = 300 # how many batches per "heap"
             
             for _ in range(num_batches):
                 
@@ -459,7 +469,7 @@ if __name__ == "__main__":
 
                 logits, _ = model(inputs, forward_impl='parallel')
                 
-                
+                intSeenTokens += seq_len
                 
                 
                 """
@@ -482,8 +492,9 @@ if __name__ == "__main__":
                 
                 
                 
-                
-                new_lr = min(1.0, epoch/120) * 3.0e-4
+                new_lr = 3.0e-4
+                if False: # warmup
+                    new_lr = min(1.0, intHeap/420) * 3.0e-4
                 
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = new_lr
@@ -497,24 +508,35 @@ if __name__ == "__main__":
                 
                 #scheduler.step() # must be after optimizer.step()
                 
+                
+                
+                
                 total_train_loss += loss.item()
                 steps += 1
                 
                 if steps % 30 == 0:
-                    print(f"Epoch {epoch} | Step {steps} | Loss: {loss.item():.4f}")
+                    print(f"heap {intHeap} | Step {steps} | Loss: {loss.item():.4f}")
             
             avg_train_loss = total_train_loss / max(1, steps)
-            print(f"=== Epoch {epoch+1}/{epochs} | Avg Train Loss: {avg_train_loss:.4f} ===")
+            floatEpoch = intSeenTokens / float( train_document.size(1) )
+            print(f"=== epoch {floatEpoch}/{epochs} | Avg Train Loss: {avg_train_loss:.6f} ===")
             
             # Save Checkpoint
-            if epoch % 2 == 0:
+            if intHeap % 2 == 0:
                 torch.save({
                     'model_state_dict': model.state_dict(),
-                    'epoch': epoch,
+                    'numLayers' : num_layers,
+                    'numHeads' : num_heads,
+                    'embed_dim' : embed_dim,
+                    
+                    'seqLen': seq_len, # sequence length of model
+                    
+                    'intHeap' : intHeap, # number of heap iteration of training
+                    'epoch': floatEpoch, # epoch of training
                 }, checkpoint_path)
             
             # Validation
-            if epoch % 1 == 0:
+            if intHeap % 1 == 0:
                 model.eval() 
                 total_test_loss = 0
                 test_steps = 0
@@ -550,6 +572,8 @@ if __name__ == "__main__":
         
         strPrompt = 'a neural network is'
         strPrompt = '<ref>{{cite book |url=' # easy : appears a lot in wikitext
+        strPrompt = 'Eliezer: Basically, it’s the original AI alignment organization'
+        strPrompt = 'Eliezer: AI alignment is'
         arrPromptTokens = tokenizeText(strPrompt)
         tensorPromptTokens = torch.tensor([arrPromptTokens], dtype=torch.long).to(device)
         
