@@ -444,6 +444,9 @@ if __name__ == "__main__":
         intSeenTokens = 0
         
         for intHeap in range(10000000000):
+            floatEpoch = intSeenTokens / float( train_document.size(1) )
+            
+            
             model.train()
             total_train_loss = 0
             steps = 0
@@ -492,9 +495,17 @@ if __name__ == "__main__":
                 
                 
                 
-                new_lr = 3.0e-4
+                #new_lr = 3.0e-4
+                new_lr = 1.8e-4
                 if False: # warmup
-                    new_lr = min(1.0, intHeap/420) * 3.0e-4
+                    new_lr = min(1.0, intHeap/420) * new_lr
+                
+                
+                # learning rate scheduler
+                new_lr = new_lr * math.exp(-(floatEpoch * 0.06))
+                
+                
+                
                 
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = new_lr
@@ -515,10 +526,9 @@ if __name__ == "__main__":
                 steps += 1
                 
                 if steps % 30 == 0:
-                    print(f"heap {intHeap} | Step {steps} | Loss: {loss.item():.4f}")
+                    print(f"heap {intHeap} | Step {steps} | Loss: {loss.item():.4f} | lr: {new_lr:.8f}")
             
             avg_train_loss = total_train_loss / max(1, steps)
-            floatEpoch = intSeenTokens / float( train_document.size(1) )
             print(f"=== epoch {floatEpoch}/{epochs} | Avg Train Loss: {avg_train_loss:.6f} ===")
             
             # Save Checkpoint
