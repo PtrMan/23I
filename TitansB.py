@@ -431,7 +431,15 @@ class TextDataset(Dataset):
 if __name__ == '__main__':
     PATH = "titansA1.pth"
 
-    CORPUS_DIRECTORY = "/notebooks/trainingdata__text/"
+    # ── Training-data search paths ────────────────────────────────────────────
+    # Add as many directories as you like.  Each is searched for *.txt files.
+    # Set recursive=True to also descend into sub-directories.
+    CORPUS_DIRECTORIES = [
+        "/notebooks/trainingdata__text/",   # original path
+        # "D:/mydata/text/",
+        # "C:/Users/me/Documents/corpus/",
+    ]
+    CORPUS_RECURSIVE = False   # set True to search subdirectories too
 
     # Hyperparameters
     VOCAB_SIZE      = 30522
@@ -446,9 +454,10 @@ if __name__ == '__main__':
     MAX_SEQ_LEN     = 64
     BATCH_SIZE      = 16
     LEARNING_RATE   = 1e-4
-    NUM_EPOCHS      = 350
-    DEVICE          = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    N_EVAL_TOKENS   = 30
+    NUM_EPOCHS        = 350
+    SAVE_EVERY_EPOCHS = 10     # save checkpoint every N epochs (not every epoch)
+    DEVICE            = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    N_EVAL_TOKENS     = 30
     MAX_SURPRISE_NORM = 1.0    # BUG 4 FIX: clip budget for grad_surprise
 
     print(f"Using device: {DEVICE}")
@@ -462,20 +471,31 @@ if __name__ == '__main__':
         VOCAB_SIZE += 1
     print(f"Tokenizer: {tokenizer_name}  vocab={VOCAB_SIZE}  pad_id={tokenizer.pad_token_id}")
 
-    # Load corpus
-    all_texts = []
-    if os.path.isdir(CORPUS_DIRECTORY):
-        text_files = glob.glob(os.path.join(CORPUS_DIRECTORY, '*.txt'))
-        for fp in text_files:
+    # Load corpus from every directory in CORPUS_DIRECTORIES
+    all_texts   = []
+    total_files = 0
+    pattern     = '**/*.txt' if CORPUS_RECURSIVE else '*.txt'
+    for directory in CORPUS_DIRECTORIES:
+        if not os.path.isdir(directory):
+            print(f"[data] '{directory}' not found — skipped.")
+            continue
+        found = glob.glob(os.path.join(directory, pattern), recursive=CORPUS_RECURSIVE)
+        if not found:
+            print(f"[data] '{directory}' — no .txt files found.")
+            continue
+        for fp in found:
             try:
                 with open(fp, encoding='utf-8') as f:
                     lines = [l.strip() for l in f if l.strip()]
-                    all_texts.extend(lines)
+                all_texts.extend(lines)
+                total_files += 1
             except Exception as e:
-                print(f"Skip {fp}: {e}")
-        print(f"Loaded {len(all_texts)} lines from {len(text_files)} files.")
+                print(f"[data] skip {fp}: {e}")
+        print(f"[data] '{directory}' — {len(found)} files loaded.")
+    if all_texts:
+        print(f"[data] Total: {len(all_texts):,} lines from {total_files} files.")
     else:
-        print(f"Directory '{CORPUS_DIRECTORY}' not found. Using inline fallback data.")
+        print("[data] No text found in any directory. Using inline fallback data.")
         all_texts = [
             "The study of long-term memory involves understanding how information is encoded, stored, and retrieved.",
             "Neural networks provide a powerful framework for modeling cognitive processes including memory.",
@@ -584,7 +604,12 @@ if __name__ == '__main__':
 
         avg_loss = total_loss / max(1, num_batches)
         print(f"--- Epoch {epoch+1} done --- avg loss: {avg_loss:.4f} ---")
-        torch.save(model.state_dict(), PATH)
+        # Save every SAVE_EVERY_EPOCHS epochs (and always on the very last epoch).
+        # Saving on EVERY epoch causes the visible pause between epochs because
+        # torch.save serialises the full state dict to disk synchronously.
+        if (epoch + 1) % SAVE_EVERY_EPOCHS == 0 or epoch == NUM_EPOCHS - 1:
+            torch.save(model.state_dict(), PATH)
+            print(f"    [ckpt saved → {PATH}]")
 
     print("--- Training finished. ---")
 
